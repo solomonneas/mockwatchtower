@@ -89,21 +89,26 @@ class NetdiscoClient:
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "NetdiscoClient":
-        # Prefer Basic Auth if username/password provided
+        import base64
+
+        # Build authorization header - prefer Basic Auth with username/password
         if self.username and self.password:
-            auth = httpx.BasicAuth(self.username, self.password)
-            headers = {"Accept": "application/json"}
+            credentials = f"{self.username}:{self.password}"
+            b64_creds = base64.b64encode(credentials.encode()).decode()
+            auth_header = f"Basic {b64_creds}"
+        elif self.api_key:
+            auth_header = f"Bearer {self.api_key}"
         else:
-            auth = None
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "application/json",
-            }
+            auth_header = ""
+
+        headers = {
+            "Authorization": auth_header,
+            "Accept": "application/json",
+        }
 
         self._client = httpx.AsyncClient(
             base_url=f"{self.base_url}/api/v1",
             headers=headers,
-            auth=auth,
             timeout=30.0,
             verify=True,
         )
@@ -119,6 +124,14 @@ class NetdiscoClient:
             raise RuntimeError("Client not initialized. Use 'async with' context manager.")
 
         response = await self._client.get(endpoint, params=params)
+
+        # Netdisco sometimes returns 302 with valid JSON body (quirky behavior)
+        if response.status_code in (200, 201, 302):
+            try:
+                return response.json()
+            except Exception:
+                pass
+
         response.raise_for_status()
         return response.json()
 

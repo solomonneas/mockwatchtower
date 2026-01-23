@@ -75,8 +75,12 @@ async def test_netdisco():
     if not config.data_sources.netdisco.url:
         return {"status": "not_configured", "message": "Netdisco URL not set in config.yaml"}
 
-    if not config.data_sources.netdisco.api_key:
-        return {"status": "not_configured", "message": "Netdisco API key not set in config.yaml"}
+    has_auth = (
+        config.data_sources.netdisco.api_key or
+        (config.data_sources.netdisco.username and config.data_sources.netdisco.password)
+    )
+    if not has_auth:
+        return {"status": "not_configured", "message": "Netdisco credentials not set in config.yaml (need api_key or username/password)"}
 
     try:
         async with NetdiscoClient() as client:
