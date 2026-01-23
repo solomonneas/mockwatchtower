@@ -2,22 +2,21 @@
 
 # Watchtower LXC Container Creator
 # Run this on your Proxmox host
-# Usage: bash create-lxc.sh [CTID] [STORAGE]
+# Usage: bash create-lxc.sh
 
 set -e
 
-CTID=${1:-200}
-STORAGE=${2:-local-lvm}
-HOSTNAME="watchtower"
-MEMORY=2048
-CORES=2
-DISK=8
-
 # Colors
+RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+HOSTNAME="watchtower"
+MEMORY=2048
+CORES=2
+DISK=8
 
 echo -e "${CYAN}"
 echo "╔═══════════════════════════════════════════╗"
@@ -25,26 +24,87 @@ echo "║    Watchtower LXC Container Creator       ║"
 echo "╚═══════════════════════════════════════════╝"
 echo -e "${NC}"
 
-echo -e "${YELLOW}Settings:${NC}"
-echo "  Container ID: $CTID"
-echo "  Hostname:     $HOSTNAME"
-echo "  Memory:       ${MEMORY}MB"
-echo "  Cores:        $CORES"
-echo "  Disk:         ${DISK}GB"
-echo "  Storage:      $STORAGE"
+# Find next available CTID
+echo -e "${GREEN}Finding next available container ID...${NC}"
+CTID=$(pvesh get /cluster/nextid)
+echo -e "Next available CTID: ${YELLOW}$CTID${NC}"
 echo ""
 
-# Check if container exists
-if pct status $CTID &>/dev/null; then
-    echo -e "${YELLOW}Container $CTID already exists.${NC}"
-    read -p "Delete and recreate? (y/N): " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        pct stop $CTID 2>/dev/null || true
-        pct destroy $CTID
-    else
-        echo "Aborted."
-        exit 1
-    fi
+# Get available bridges/bonds
+echo -e "${GREEN}Available network bridges:${NC}"
+BRIDGES=$(ip -br link show type bridge | awk '{print $1}')
+i=1
+declare -A BRIDGE_MAP
+for br in $BRIDGES; do
+    echo "  $i) $br"
+    BRIDGE_MAP[$i]=$br
+    ((i++))
+done
+echo ""
+
+read -p "Select bridge [1]: " BRIDGE_CHOICE
+BRIDGE_CHOICE=${BRIDGE_CHOICE:-1}
+BRIDGE=${BRIDGE_MAP[$BRIDGE_CHOICE]:-vmbr0}
+echo -e "Selected: ${YELLOW}$BRIDGE${NC}"
+echo ""
+
+# VLAN tag
+read -p "VLAN tag (leave empty for none): " VLAN_TAG
+if [[ -n "$VLAN_TAG" ]]; then
+    echo -e "VLAN: ${YELLOW}$VLAN_TAG${NC}"
+fi
+echo ""
+
+# Firewall
+read -p "Enable firewall? (y/N): " FIREWALL_CHOICE
+if [[ "$FIREWALL_CHOICE" =~ ^[Yy]$ ]]; then
+    FIREWALL=1
+    echo -e "Firewall: ${YELLOW}Enabled${NC}"
+else
+    FIREWALL=0
+    echo -e "Firewall: ${YELLOW}Disabled${NC}"
+fi
+echo ""
+
+# Storage selection
+echo -e "${GREEN}Available storage:${NC}"
+STORAGES=$(pvesm status -content rootdir | awk 'NR>1 {print $1}')
+i=1
+declare -A STORAGE_MAP
+for st in $STORAGES; do
+    echo "  $i) $st"
+    STORAGE_MAP[$i]=$st
+    ((i++))
+done
+echo ""
+
+read -p "Select storage [1]: " STORAGE_CHOICE
+STORAGE_CHOICE=${STORAGE_CHOICE:-1}
+STORAGE=${STORAGE_MAP[$STORAGE_CHOICE]:-local-lvm}
+echo -e "Selected: ${YELLOW}$STORAGE${NC}"
+echo ""
+
+# Summary
+echo -e "${CYAN}═══════════════════════════════════════════${NC}"
+echo -e "${CYAN}           Configuration Summary           ${NC}"
+echo -e "${CYAN}═══════════════════════════════════════════${NC}"
+echo -e "  Container ID: ${YELLOW}$CTID${NC}"
+echo -e "  Hostname:     ${YELLOW}$HOSTNAME${NC}"
+echo -e "  Memory:       ${YELLOW}${MEMORY}MB${NC}"
+echo -e "  Cores:        ${YELLOW}$CORES${NC}"
+echo -e "  Disk:         ${YELLOW}${DISK}GB${NC}"
+echo -e "  Storage:      ${YELLOW}$STORAGE${NC}"
+echo -e "  Bridge:       ${YELLOW}$BRIDGE${NC}"
+if [[ -n "$VLAN_TAG" ]]; then
+echo -e "  VLAN:         ${YELLOW}$VLAN_TAG${NC}"
+fi
+echo -e "  Firewall:     ${YELLOW}$([ $FIREWALL -eq 1 ] && echo 'Yes' || echo 'No')${NC}"
+echo ""
+
+read -p "Proceed with creation? (Y/n): " CONFIRM
+if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+    echo "Aborted."
+    exit 0
 fi
 
 # Find template
@@ -59,6 +119,12 @@ fi
 
 echo -e "${GREEN}Using template: $TEMPLATE${NC}"
 
+# Build network config
+NET_CONFIG="name=eth0,bridge=$BRIDGE,ip=dhcp,firewall=$FIREWALL"
+if [[ -n "$VLAN_TAG" ]]; then
+    NET_CONFIG="${NET_CONFIG},tag=$VLAN_TAG"
+fi
+
 # Create container
 echo -e "\n${GREEN}Creating LXC container...${NC}"
 pct create $CTID $TEMPLATE \
@@ -66,7 +132,7 @@ pct create $CTID $TEMPLATE \
     --memory $MEMORY \
     --cores $CORES \
     --rootfs $STORAGE:$DISK \
-    --net0 name=eth0,bridge=vmbr0,ip=dhcp \
+    --net0 "$NET_CONFIG" \
     --unprivileged 1 \
     --features nesting=1 \
     --onboot 1
@@ -77,10 +143,19 @@ pct start $CTID
 
 # Wait for network
 echo -e "${GREEN}Waiting for network...${NC}"
-sleep 10
+for i in {1..30}; do
+    IP=$(pct exec $CTID -- hostname -I 2>/dev/null | awk '{print $1}')
+    if [[ -n "$IP" ]]; then
+        break
+    fi
+    sleep 1
+done
 
-# Get IP
-IP=$(pct exec $CTID -- hostname -I 2>/dev/null | awk '{print $1}')
+if [[ -z "$IP" ]]; then
+    echo -e "${YELLOW}Could not detect IP. Container may still be starting.${NC}"
+    IP="<container-ip>"
+fi
+
 echo -e "${GREEN}Container IP: $IP${NC}"
 
 # Run installer
@@ -97,4 +172,8 @@ echo -e "${YELLOW}Container management:${NC}"
 echo "  pct enter $CTID              # Enter container shell"
 echo "  pct stop $CTID               # Stop container"
 echo "  pct start $CTID              # Start container"
+echo "  pct destroy $CTID            # Delete container"
+echo ""
+echo -e "${YELLOW}Logs:${NC}"
+echo "  pct exec $CTID -- journalctl -u watchtower -f"
 echo ""
