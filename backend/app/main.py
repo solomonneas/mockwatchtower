@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .cache import redis_cache
 from .config import settings
 from .routers import alerts_router, devices_router, topology_router
+from .routers.diagnostics import router as diagnostics_router
 from .websocket import websocket_endpoint, ws_manager
 
 
@@ -43,6 +44,7 @@ app.add_middleware(
 app.include_router(topology_router, prefix="/api", tags=["topology"])
 app.include_router(devices_router, prefix="/api", tags=["devices"])
 app.include_router(alerts_router, prefix="/api", tags=["alerts"])
+app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
 
 
 @app.get("/health")

@@ -16,7 +16,7 @@ NC='\033[0m'
 HOSTNAME="watchtower"
 MEMORY=2048
 CORES=2
-DISK=8
+DISK=32
 
 echo -e "${CYAN}"
 echo "╔═══════════════════════════════════════════╗"
@@ -52,6 +52,36 @@ echo ""
 read -p "VLAN tag (leave empty for none): " VLAN_TAG
 if [[ -n "$VLAN_TAG" ]]; then
     echo -e "VLAN: ${YELLOW}$VLAN_TAG${NC}"
+fi
+echo ""
+
+# IP configuration
+echo -e "${GREEN}IP Configuration:${NC}"
+echo "  1) DHCP (automatic)"
+echo "  2) Static IP"
+echo ""
+read -p "Select IP mode [1]: " IP_MODE
+IP_MODE=${IP_MODE:-1}
+
+if [[ "$IP_MODE" == "2" ]]; then
+    read -p "IP address (e.g., 192.168.1.100/24): " STATIC_IP
+    read -p "Gateway (e.g., 192.168.1.1): " GATEWAY
+
+    # Validate IP address format (CIDR notation)
+    if [[ ! "$STATIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
+        echo -e "${RED}Invalid IP format. Expected: x.x.x.x/xx. Falling back to DHCP.${NC}"
+        IP_CONFIG="dhcp"
+    elif [[ ! "$GATEWAY" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${RED}Invalid gateway format. Expected: x.x.x.x. Falling back to DHCP.${NC}"
+        IP_CONFIG="dhcp"
+    else
+        IP_CONFIG="$STATIC_IP,gw=$GATEWAY"
+        echo -e "Static IP: ${YELLOW}$STATIC_IP${NC}"
+        echo -e "Gateway: ${YELLOW}$GATEWAY${NC}"
+    fi
+else
+    IP_CONFIG="dhcp"
+    echo -e "IP Mode: ${YELLOW}DHCP${NC}"
 fi
 echo ""
 
@@ -98,6 +128,12 @@ echo -e "  Bridge:       ${YELLOW}$BRIDGE${NC}"
 if [[ -n "$VLAN_TAG" ]]; then
 echo -e "  VLAN:         ${YELLOW}$VLAN_TAG${NC}"
 fi
+if [[ "$IP_CONFIG" == "dhcp" ]]; then
+echo -e "  IP:           ${YELLOW}DHCP${NC}"
+else
+echo -e "  IP:           ${YELLOW}$STATIC_IP${NC}"
+echo -e "  Gateway:      ${YELLOW}$GATEWAY${NC}"
+fi
 echo -e "  Firewall:     ${YELLOW}$([ $FIREWALL -eq 1 ] && echo 'Yes' || echo 'No')${NC}"
 echo ""
 
@@ -120,7 +156,7 @@ fi
 echo -e "${GREEN}Using template: $TEMPLATE${NC}"
 
 # Build network config
-NET_CONFIG="name=eth0,bridge=$BRIDGE,ip=dhcp,firewall=$FIREWALL"
+NET_CONFIG="name=eth0,bridge=$BRIDGE,ip=$IP_CONFIG,firewall=$FIREWALL"
 if [[ -n "$VLAN_TAG" ]]; then
     NET_CONFIG="${NET_CONFIG},tag=$VLAN_TAG"
 fi

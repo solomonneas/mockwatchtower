@@ -167,6 +167,7 @@ devices:
 
 # Connections between devices
 connections:
+  # Firewall to Switch Stack
   - id: pa1-to-cat1
     source: { device: pa-1, port: eth1/1 }
     target: { device: cat-1, port: Gi1/0/48 }
@@ -178,6 +179,99 @@ connections:
     target: { device: cat-1, port: Gi1/0/47 }
     type: trunk
     speed: 10000
+
+  # Proxmox Cluster to Catalyst switches (distributed across stack)
+  - id: pve1-to-cat1
+    source: { device: pve-1, port: eno1 }
+    target: { device: cat-1, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+  - id: pve2-to-cat1
+    source: { device: pve-2, port: eno1 }
+    target: { device: cat-1, port: Gi1/0/2 }
+    type: access
+    speed: 10000
+
+  - id: pve3-to-cat2
+    source: { device: pve-3, port: eno1 }
+    target: { device: cat-2, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+  - id: pve4-to-cat2
+    source: { device: pve-4, port: eno1 }
+    target: { device: cat-2, port: Gi1/0/2 }
+    type: access
+    speed: 10000
+
+  - id: pve5-to-cat3
+    source: { device: pve-5, port: eno1 }
+    target: { device: cat-3, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+  - id: pve6-to-cat3
+    source: { device: pve-6, port: eno1 }
+    target: { device: cat-3, port: Gi1/0/2 }
+    type: access
+    speed: 10000
+
+  # Dell Servers to Catalyst switches
+  - id: dell1-to-cat2
+    source: { device: dell-1, port: eno1 }
+    target: { device: cat-2, port: Gi1/0/10 }
+    type: access
+    speed: 10000
+
+  - id: dell2-to-cat2
+    source: { device: dell-2, port: eno1 }
+    target: { device: cat-2, port: Gi1/0/11 }
+    type: access
+    speed: 10000
+
+  - id: dell3-to-cat3
+    source: { device: dell-3, port: eno1 }
+    target: { device: cat-3, port: Gi1/0/10 }
+    type: access
+    speed: 10000
+
+  - id: dell4-to-cat3
+    source: { device: dell-4, port: eno1 }
+    target: { device: cat-3, port: Gi1/0/11 }
+    type: access
+    speed: 10000
+
+  - id: dell5-to-cat4
+    source: { device: dell-5, port: eno1 }
+    target: { device: cat-4, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+  - id: dell6-to-cat4
+    source: { device: dell-6, port: eno1 }
+    target: { device: cat-4, port: Gi1/0/2 }
+    type: access
+    speed: 10000
+
+  # Stack interconnects (between Catalyst switches in the stack)
+  - id: cat1-to-cat2
+    source: { device: cat-1, port: Stack1 }
+    target: { device: cat-2, port: Stack1 }
+    type: stack
+    speed: 80000
+
+  - id: cat2-to-cat3
+    source: { device: cat-2, port: Stack2 }
+    target: { device: cat-3, port: Stack1 }
+    type: stack
+    speed: 80000
+
+  - id: cat3-to-cat4
+    source: { device: cat-3, port: Stack2 }
+    target: { device: cat-4, port: Stack1 }
+    type: stack
+    speed: 80000
 
 # External Links (WAN, upstream)
 external_links:

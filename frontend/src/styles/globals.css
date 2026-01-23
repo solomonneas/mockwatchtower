@@ -108,6 +108,20 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+/* Edge flow animation (traffic trail effect) */
+@keyframes edge-flow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-flow {
+  animation: edge-flow 1s linear infinite;
+}
+
 /* Status dot sizes */
 .status-dot {
   @apply w-2 h-2 rounded-full;

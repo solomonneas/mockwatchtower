@@ -13,13 +13,14 @@ import '@xyflow/react/dist/style.css'
 
 import { useNocStore } from '../../store/nocStore'
 import ClusterNode from './nodes/ClusterNode'
+import DeviceNode from './nodes/DeviceNode'
 import ExternalNode from './nodes/ExternalNode'
 import TrafficEdge from './edges/TrafficEdge'
-import type { Topology } from '../../types/topology'
-import type { Device } from '../../types/device'
+import type { Topology, Cluster } from '../../types/topology'
 
 const nodeTypes = {
   cluster: ClusterNode,
+  device: DeviceNode,
   external: ExternalNode,
 } as const
 
@@ -27,29 +28,60 @@ const edgeTypes = {
   traffic: TrafficEdge,
 } as const
 
-interface ClusterNodeData {
-  cluster: { id: string; name: string; icon: string }
-  devices: Device[]
+// Calculate positions for expanded device nodes in a horizontal layout
+function getExpandedDevicePositions(
+  cluster: Cluster,
+  deviceCount: number
+): { x: number; y: number }[] {
+  const spacing = 160
+  const startX = cluster.position.x - ((deviceCount - 1) * spacing) / 2
+
+  return Array.from({ length: deviceCount }, (_, i) => ({
+    x: startX + i * spacing,
+    y: cluster.position.y,
+  }))
 }
 
-function topologyToNodes(topology: Topology): Node[] {
+function topologyToNodes(
+  topology: Topology,
+  expandedClusters: Set<string>
+): Node[] {
   const nodes: Node[] = []
 
-  // Create cluster nodes
+  // Create cluster or device nodes based on expansion state
   topology.clusters.forEach((cluster) => {
     const clusterDevices = cluster.device_ids
       .map((id) => topology.devices[id])
       .filter(Boolean)
 
-    nodes.push({
-      id: cluster.id,
-      type: 'cluster',
-      position: { x: cluster.position.x, y: cluster.position.y },
-      data: {
-        cluster,
-        devices: clusterDevices,
-      },
-    })
+    if (expandedClusters.has(cluster.id)) {
+      // Render individual device nodes
+      const positions = getExpandedDevicePositions(cluster, clusterDevices.length)
+
+      clusterDevices.forEach((device, index) => {
+        nodes.push({
+          id: device.id,
+          type: 'device',
+          position: positions[index],
+          data: {
+            device,
+            clusterId: cluster.id,
+            clusterColor: '#39d5ff',
+          },
+        })
+      })
+    } else {
+      // Render collapsed cluster node
+      nodes.push({
+        id: cluster.id,
+        type: 'cluster',
+        position: { x: cluster.position.x, y: cluster.position.y },
+        data: {
+          cluster,
+          devices: clusterDevices,
+        },
+      })
+    }
   })
 
   // Create external endpoint nodes from external links
@@ -57,7 +89,6 @@ function topologyToNodes(topology: Topology): Node[] {
 
   topology.external_links.forEach((link, index) => {
     if (!externalEndpoints.has(link.target.label)) {
-      // Position external nodes to the left of the topology
       externalEndpoints.set(link.target.label, {
         label: link.target.label,
         type: link.target.type,
@@ -67,7 +98,6 @@ function topologyToNodes(topology: Topology): Node[] {
       })
     }
 
-    // Also add source labels that aren't devices
     if (link.source.label && !externalEndpoints.has(link.source.label)) {
       externalEndpoints.set(link.source.label, {
         label: link.source.label,
@@ -95,12 +125,14 @@ function topologyToNodes(topology: Topology): Node[] {
   return nodes
 }
 
-function topologyToEdges(topology: Topology): Edge[] {
+function topologyToEdges(
+  topology: Topology,
+  expandedClusters: Set<string>
+): Edge[] {
   const edges: Edge[] = []
+  const addedEdges = new Set<string>()
 
-  // Create edges between clusters based on connections
-  const clusterConnections = new Map<string, { utilization: number; status: string }>()
-
+  // Process all device-to-device connections
   topology.connections.forEach((conn) => {
     const sourceDevice = conn.source.device
     const targetDevice = conn.target.device
@@ -109,41 +141,73 @@ function topologyToEdges(topology: Topology): Edge[] {
       const sourceCluster = topology.devices[sourceDevice]?.cluster_id
       const targetCluster = topology.devices[targetDevice]?.cluster_id
 
-      if (sourceCluster && targetCluster && sourceCluster !== targetCluster) {
-        const key = [sourceCluster, targetCluster].sort().join('-')
-        const existing = clusterConnections.get(key)
+      if (!sourceCluster || !targetCluster) return
 
-        if (!existing || conn.utilization > existing.utilization) {
-          clusterConnections.set(key, {
-            utilization: conn.utilization,
-            status: conn.status,
-          })
-        }
+      const sourceExpanded = expandedClusters.has(sourceCluster)
+      const targetExpanded = expandedClusters.has(targetCluster)
+
+      // Determine actual source/target node IDs based on expansion state
+      let actualSource: string
+      let actualTarget: string
+
+      if (sourceExpanded && targetExpanded) {
+        // Both expanded: device-to-device
+        actualSource = sourceDevice
+        actualTarget = targetDevice
+      } else if (sourceExpanded) {
+        // Only source expanded: device-to-cluster
+        actualSource = sourceDevice
+        actualTarget = targetCluster
+      } else if (targetExpanded) {
+        // Only target expanded: cluster-to-device
+        actualSource = sourceCluster
+        actualTarget = targetDevice
+      } else {
+        // Neither expanded: cluster-to-cluster (aggregate)
+        actualSource = sourceCluster
+        actualTarget = targetCluster
+      }
+
+      // Skip self-connections (within same cluster when collapsed)
+      if (actualSource === actualTarget) return
+
+      // Create unique edge key to avoid duplicates
+      const edgeKey = [actualSource, actualTarget].sort().join('--')
+
+      if (!addedEdges.has(edgeKey)) {
+        addedEdges.add(edgeKey)
+
+        edges.push({
+          id: `edge-${edgeKey}`,
+          source: actualSource,
+          target: actualTarget,
+          type: 'traffic',
+          data: {
+            utilization: conn.utilization ?? 0,
+            status: conn.status ?? 'up',
+          },
+        })
       }
     }
   })
 
-  clusterConnections.forEach((data, key) => {
-    const [source, target] = key.split('-')
-    edges.push({
-      id: `edge-${key}`,
-      source,
-      target,
-      type: 'traffic',
-      data: {
-        utilization: data.utilization,
-        status: data.status,
-      },
-    })
-  })
-
   // Create edges for external links
   topology.external_links.forEach((link) => {
-    const sourceId = link.source.device
-      ? topology.devices[link.source.device]?.cluster_id
-      : link.source.label
-        ? `external-${link.source.label}`
-        : null
+    const sourceDeviceId = link.source.device
+    const sourceCluster = sourceDeviceId
+      ? topology.devices[sourceDeviceId]?.cluster_id
+      : null
+
+    let sourceId: string | null
+
+    if (sourceDeviceId && sourceCluster) {
+      // If source cluster is expanded, connect to the device directly
+      sourceId = expandedClusters.has(sourceCluster) ? sourceDeviceId : sourceCluster
+    } else if (link.source.label) {
+      sourceId = `external-${link.source.label}`
+    } else {
+      sourceId = null
+    }
 
     const targetId = `external-${link.target.label}`
 
@@ -154,8 +218,8 @@ function topologyToEdges(topology: Topology): Edge[] {
         target: targetId,
         type: 'traffic',
         data: {
-          utilization: link.utilization,
-          status: link.status,
+          utilization: link.utilization ?? 0,
+          status: link.status ?? 'up',
         },
       })
     }
@@ -166,39 +230,55 @@ function topologyToEdges(topology: Topology): Edge[] {
 
 export default function TopologyCanvas() {
   const topology = useNocStore((state) => state.topology)
+  const expandedClusters = useNocStore((state) => state.expandedClusters)
   const selectDevice = useNocStore((state) => state.selectDevice)
+  const toggleClusterExpanded = useNocStore((state) => state.toggleClusterExpanded)
 
   const initialNodes = useMemo(
-    () => (topology ? topologyToNodes(topology) : []),
-    [topology]
+    () => (topology ? topologyToNodes(topology, expandedClusters) : []),
+    [topology, expandedClusters]
   )
 
   const initialEdges = useMemo(
-    () => (topology ? topologyToEdges(topology) : []),
-    [topology]
+    () => (topology ? topologyToEdges(topology, expandedClusters) : []),
+    [topology, expandedClusters]
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
 
-  // Update nodes when topology changes
+  // Update nodes when topology or expanded state changes
   useEffect(() => {
     if (topology) {
-      setNodes(topologyToNodes(topology))
-      setEdges(topologyToEdges(topology))
+      setNodes(topologyToNodes(topology, expandedClusters))
+      setEdges(topologyToEdges(topology, expandedClusters))
     }
-  }, [topology, setNodes, setEdges])
+  }, [topology, expandedClusters, setNodes, setEdges])
 
+  // Single click: select device for sidebar details
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      if (node.type === 'cluster') {
-        const nodeData = node.data as unknown as ClusterNodeData
-        if (nodeData.devices && nodeData.devices.length > 0) {
-          selectDevice(nodeData.devices[0].id)
-        }
+      if (node.type === 'device') {
+        selectDevice(node.id)
       }
     },
     [selectDevice]
+  )
+
+  // Double click: toggle expand/collapse
+  const onNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (node.type === 'cluster') {
+        toggleClusterExpanded(node.id)
+      } else if (node.type === 'device') {
+        // Collapse parent cluster
+        const clusterId = (node.data as { clusterId?: string }).clusterId
+        if (clusterId) {
+          toggleClusterExpanded(clusterId)
+        }
+      }
+    },
+    [toggleClusterExpanded]
   )
 
   if (!topology) {
@@ -213,6 +293,7 @@ export default function TopologyCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
@@ -234,6 +315,7 @@ export default function TopologyCanvas() {
           className="!bg-bg-secondary !border-border-default"
           nodeColor={(node) => {
             if (node.type === 'external') return '#6e7681'
+            if (node.type === 'device') return '#58a6ff'
             return '#39d5ff'
           }}
           maskColor="rgba(13, 17, 23, 0.8)"

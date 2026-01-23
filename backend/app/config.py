@@ -139,3 +139,47 @@ def get_topology_config() -> dict[str, Any]:
 # Singleton instances
 settings = Settings()
 config = get_config()
+
+
+class IntegrationSettings:
+    """Convenience class for integration clients to access config."""
+
+    def __init__(self):
+        self._config = get_config()
+
+    @property
+    def librenms_url(self) -> str:
+        return self._config.data_sources.librenms.url
+
+    @property
+    def librenms_api_key(self) -> str:
+        return self._config.data_sources.librenms.api_key
+
+    @property
+    def netdisco_url(self) -> str:
+        return self._config.data_sources.netdisco.url
+
+    @property
+    def netdisco_api_key(self) -> str:
+        return self._config.data_sources.netdisco.api_key
+
+    @property
+    def proxmox_url(self) -> str:
+        return self._config.data_sources.proxmox.url
+
+    @property
+    def proxmox_token_id(self) -> str:
+        return self._config.data_sources.proxmox.token_id
+
+    @property
+    def proxmox_token_secret(self) -> str:
+        return self._config.data_sources.proxmox.token_secret
+
+    @property
+    def proxmox_verify_ssl(self) -> bool:
+        return self._config.data_sources.proxmox.verify_ssl
+
+
+def get_settings() -> IntegrationSettings:
+    """Get integration settings for API clients."""
+    return IntegrationSettings()

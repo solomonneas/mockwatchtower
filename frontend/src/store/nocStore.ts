@@ -14,6 +14,7 @@ interface NocState {
   error: string | null
   isConnected: boolean
   sidebarOpen: boolean
+  expandedClusters: Set<string>
 
   // Actions
   setTopology: (topology: Topology) => void
@@ -24,6 +25,7 @@ interface NocState {
   setError: (error: string | null) => void
   setConnected: (connected: boolean) => void
   setSidebarOpen: (open: boolean) => void
+  toggleClusterExpanded: (clusterId: string) => void
   clearSelection: () => void
 }
 
@@ -36,6 +38,7 @@ export const useNocStore = create<NocState>((set, get) => ({
   error: null,
   isConnected: false,
   sidebarOpen: true,
+  expandedClusters: new Set<string>(),
 
   // Actions
   setTopology: (topology) => set({ topology, error: null }),
@@ -86,6 +89,17 @@ export const useNocStore = create<NocState>((set, get) => ({
   setError: (error) => set({ error }),
   setConnected: (isConnected) => set({ isConnected }),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+
+  toggleClusterExpanded: (clusterId) => {
+    const { expandedClusters } = get()
+    const newExpanded = new Set(expandedClusters)
+    if (newExpanded.has(clusterId)) {
+      newExpanded.delete(clusterId)
+    } else {
+      newExpanded.add(clusterId)
+    }
+    set({ expandedClusters: newExpanded })
+  },
 
   clearSelection: () => set({ selectedDevice: null, selectedConnection: null }),
 }))

@@ -30,7 +30,7 @@ function ClusterNode({ data, selected }: ClusterNodeProps) {
 
       <div
         className={`
-          bg-bg-secondary border-2 rounded-lg p-4 min-w-[180px]
+          group relative bg-bg-secondary border-2 rounded-lg p-4 min-w-[180px]
           transition-all duration-200 cursor-pointer
           ${selected ? 'border-accent-cyan shadow-lg shadow-accent-cyan/20' : 'border-border-default'}
           ${downCount > 0 ? 'border-status-red' : ''}
@@ -72,6 +72,11 @@ function ClusterNode({ data, selected }: ClusterNodeProps) {
           <span className={allUp ? 'text-status-green' : 'text-status-amber'}>
             {allUp ? 'All healthy' : `${downCount} down`}
           </span>
+        </div>
+
+        {/* Expand hint */}
+        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-text-muted text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          Double-click to expand
         </div>
       </div>
     </>
