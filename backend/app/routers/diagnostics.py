@@ -126,8 +126,17 @@ async def get_scheduler_status():
     last_poll = await redis_cache.get_json(CACHE_LAST_POLL)
     config = get_config()
 
+    # Safely check scheduler state
+    try:
+        is_running = (
+            scheduler._scheduler is not None
+            and scheduler._scheduler.running
+        )
+    except Exception:
+        is_running = False
+
     return {
-        "running": scheduler._scheduler is not None and scheduler._scheduler.running if scheduler._scheduler else False,
+        "running": is_running,
         "intervals": {
             "device_status": config.polling.device_status,
             "interfaces": config.polling.interfaces,

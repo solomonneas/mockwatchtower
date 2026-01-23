@@ -21,6 +21,7 @@ interface NocState {
   selectDevice: (deviceId: string | null) => void
   selectConnection: (connectionId: string | null) => void
   updateDeviceStatus: (deviceId: string, status: string) => void
+  updateAlertCount: (delta: number) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   setConnected: (connected: boolean) => void
@@ -73,16 +74,50 @@ export const useNocStore = create<NocState>((set, get) => ({
 
     const device = topology.devices[deviceId]
     if (device) {
+      const newStatus = status as Device['status']
+      const oldStatus = device.status
+
+      // Update device status
+      const newDevices = {
+        ...topology.devices,
+        [deviceId]: { ...device, status: newStatus },
+      }
+
+      // Recalculate counters if status actually changed
+      let devicesUp = topology.devices_up
+      let devicesDown = topology.devices_down
+
+      if (oldStatus !== newStatus) {
+        // Decrement old status counter
+        if (oldStatus === 'up') devicesUp--
+        else if (oldStatus === 'down') devicesDown--
+
+        // Increment new status counter
+        if (newStatus === 'up') devicesUp++
+        else if (newStatus === 'down') devicesDown++
+      }
+
       set({
         topology: {
           ...topology,
-          devices: {
-            ...topology.devices,
-            [deviceId]: { ...device, status: status as Device['status'] },
-          },
+          devices: newDevices,
+          devices_up: devicesUp,
+          devices_down: devicesDown,
         },
       })
     }
+  },
+
+  updateAlertCount: (delta) => {
+    const { topology } = get()
+    if (!topology) return
+
+    set({
+      topology: {
+        ...topology,
+        active_alerts: Math.max(0, topology.active_alerts + delta),
+      },
+    })
   },
 
   setLoading: (isLoading) => set({ isLoading }),
