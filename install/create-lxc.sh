@@ -96,6 +96,26 @@ else
 fi
 echo ""
 
+# Root password
+echo -e "${GREEN}Container root password:${NC}"
+while true; do
+    read -s -p "Enter password: " ROOT_PASSWORD
+    echo ""
+    read -s -p "Confirm password: " ROOT_PASSWORD_CONFIRM
+    echo ""
+    if [[ "$ROOT_PASSWORD" == "$ROOT_PASSWORD_CONFIRM" ]]; then
+        if [[ -z "$ROOT_PASSWORD" ]]; then
+            echo -e "${RED}Password cannot be empty.${NC}"
+        else
+            echo -e "Password: ${YELLOW}(set)${NC}"
+            break
+        fi
+    else
+        echo -e "${RED}Passwords do not match. Try again.${NC}"
+    fi
+done
+echo ""
+
 # Storage selection
 echo -e "${GREEN}Available storage:${NC}"
 STORAGES=$(pvesm status -content rootdir | awk 'NR>1 {print $1}')
@@ -135,6 +155,7 @@ echo -e "  IP:           ${YELLOW}$STATIC_IP${NC}"
 echo -e "  Gateway:      ${YELLOW}$GATEWAY${NC}"
 fi
 echo -e "  Firewall:     ${YELLOW}$([ $FIREWALL -eq 1 ] && echo 'Yes' || echo 'No')${NC}"
+echo -e "  Root Password: ${YELLOW}(set)${NC}"
 echo ""
 
 read -p "Proceed with creation? (Y/n): " CONFIRM
@@ -171,7 +192,8 @@ pct create $CTID $TEMPLATE \
     --net0 "$NET_CONFIG" \
     --unprivileged 1 \
     --features nesting=1 \
-    --onboot 1
+    --onboot 1 \
+    --password "$ROOT_PASSWORD"
 
 # Start container
 echo -e "${GREEN}Starting container...${NC}"
