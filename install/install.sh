@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+
+# Watchtower NOC Dashboard Installer
+# Run inside an LXC container or VM
+# Usage: bash install.sh
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+APP_DIR="/opt/watchtower"
+APP_USER="watchtower"
+
+echo -e "${CYAN}"
+echo "╔═══════════════════════════════════════════╗"
+echo "║       Watchtower NOC Dashboard            ║"
+echo "║           Installation Script             ║"
+echo "╚═══════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}This script must be run as root${NC}"
+   exit 1
+fi
+
+# Detect OS
+if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    OS=$ID
+else
+    echo -e "${RED}Cannot detect OS${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Detected OS: $OS $VERSION_ID${NC}"
+
+# Install dependencies
+echo -e "\n${GREEN}=== Installing Dependencies ===${NC}"
+
+if [[ "$OS" == "debian" ]] || [[ "$OS" == "ubuntu" ]]; then
+    apt-get update
+    apt-get install -y \
+        python3 \
+        python3-venv \
+        python3-pip \
+        redis-server \
+        nginx \
+        curl \
+        git \
+        ca-certificates
+
+    # Install Node.js 20
+    if ! command -v node &> /dev/null; then
+        echo -e "${GREEN}Installing Node.js 20...${NC}"
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt-get install -y nodejs
+    fi
+else
+    echo -e "${RED}Unsupported OS: $OS${NC}"
+    exit 1
+fi
+
+# Create app user
+echo -e "\n${GREEN}=== Creating Application User ===${NC}"
+id -u $APP_USER &>/dev/null || useradd -r -s /bin/bash -d $APP_DIR -m $APP_USER
+
+# Clone or update repository
+echo -e "\n${GREEN}=== Downloading Watchtower ===${NC}"
+if [[ -d "$APP_DIR/.git" ]]; then
+    echo "Updating existing installation..."
+    cd $APP_DIR
+    git fetch origin
+    git reset --hard origin/main
+else
+    rm -rf $APP_DIR
+    git clone https://github.com/solomonneas/watchtower.git $APP_DIR
+fi
+
+chown -R $APP_USER:$APP_USER $APP_DIR
+
+# Setup Python environment
+echo -e "\n${GREEN}=== Setting Up Python Environment ===${NC}"
+cd $APP_DIR/backend
+sudo -u $APP_USER python3 -m venv venv
+sudo -u $APP_USER $APP_DIR/backend/venv/bin/pip install --upgrade pip
+sudo -u $APP_USER $APP_DIR/backend/venv/bin/pip install -r requirements.txt
+
+# Setup Node environment
+echo -e "\n${GREEN}=== Setting Up Frontend ===${NC}"
+cd $APP_DIR/frontend
+sudo -u $APP_USER npm install
+
+# Build frontend for production
+echo -e "\n${GREEN}=== Building Frontend ===${NC}"
+sudo -u $APP_USER npm run build
+
+# Create config if not exists
+if [[ ! -f "$APP_DIR/config/config.yaml" ]]; then
+    echo -e "\n${GREEN}=== Creating Configuration ===${NC}"
+    cp $APP_DIR/config/config.example.yaml $APP_DIR/config/config.yaml
+    chown $APP_USER:$APP_USER $APP_DIR/config/config.yaml
+fi
+
+# Create systemd service for backend
+echo -e "\n${GREEN}=== Creating Systemd Services ===${NC}"
+cat > /etc/systemd/system/watchtower.service << EOF
+[Unit]
+Description=Watchtower NOC Dashboard Backend
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$APP_DIR/backend
+Environment=PATH=$APP_DIR/backend/venv/bin:/usr/bin
+ExecStart=$APP_DIR/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Configure Nginx
+echo -e "\n${GREEN}=== Configuring Nginx ===${NC}"
+cat > /etc/nginx/sites-available/watchtower << 'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    # Frontend (production build)
+    location / {
+        root /opt/watchtower/frontend/dist;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxy
+    location /api {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket proxy
+    location /ws {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
+    # Health check
+    location /health {
+        proxy_pass http://127.0.0.1:8000;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/watchtower /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+
+# Test nginx config
+nginx -t
+
+# Enable and start services
+echo -e "\n${GREEN}=== Starting Services ===${NC}"
+systemctl daemon-reload
+systemctl enable redis-server
+systemctl enable watchtower
+systemctl enable nginx
+
+systemctl start redis-server
+systemctl start watchtower
+systemctl restart nginx
+
+# Wait for backend to start
+sleep 3
+
+# Get IP address
+IP_ADDR=$(hostname -I | awk '{print $1}')
+
+# Test health
+echo -e "\n${GREEN}=== Testing Installation ===${NC}"
+if curl -s http://127.0.0.1:8000/health | grep -q "healthy"; then
+    echo -e "${GREEN}Backend is running!${NC}"
+else
+    echo -e "${YELLOW}Backend may still be starting...${NC}"
+fi
+
+echo -e "\n${CYAN}╔═══════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║       Installation Complete!              ║${NC}"
+echo -e "${CYAN}╚═══════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "Access Watchtower at: ${GREEN}http://$IP_ADDR${NC}"
+echo ""
+echo -e "${YELLOW}Configuration:${NC} $APP_DIR/config/config.yaml"
+echo -e "${YELLOW}Logs:${NC} journalctl -u watchtower -f"
+echo ""
+echo -e "${YELLOW}Commands:${NC}"
+echo "  systemctl status watchtower   # Check status"
+echo "  systemctl restart watchtower  # Restart backend"
+echo "  cd $APP_DIR && git pull       # Update code"
+echo ""
