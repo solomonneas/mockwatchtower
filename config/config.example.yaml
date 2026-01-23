@@ -81,3 +81,20 @@ alert_thresholds:
     interface_utilization_warning: 70
     interface_utilization_critical: 90
   overrides: {}
+
+# LibreNMS Device Discovery
+discovery:
+  # Subnets to exclude (VMs typically live here)
+  vm_subnets:
+    - "10.2.50.0/24"
+  # Device types to include in topology
+  # Maps from LibreNMS OS: panos->firewall, iosxe->network, proxmox->server, etc.
+  include_types:
+    - firewall
+    - network
+    - server
+    - wireless
+  # Auto-sync topology from LibreNMS (requires restart)
+  auto_sync: false
+  # Sync interval in seconds (only used if auto_sync is true)
+  sync_interval: 3600

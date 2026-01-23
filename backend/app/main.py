@@ -10,6 +10,7 @@ from .config import settings, get_config
 from .polling import scheduler
 from .routers import alerts_router, devices_router, topology_router
 from .routers.diagnostics import router as diagnostics_router
+from .routers.discovery import router as discovery_router
 from .websocket import websocket_endpoint, ws_manager
 
 
@@ -53,6 +54,7 @@ app.include_router(topology_router, prefix="/api", tags=["topology"])
 app.include_router(devices_router, prefix="/api", tags=["devices"])
 app.include_router(alerts_router, prefix="/api", tags=["alerts"])
 app.include_router(diagnostics_router, prefix="/api", tags=["diagnostics"])
+app.include_router(discovery_router, prefix="/api", tags=["discovery"])
 
 
 @app.get("/health")

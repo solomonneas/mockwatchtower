@@ -91,12 +91,22 @@ class AlertThresholdsConfig(BaseModel):
     overrides: dict[str, AlertThresholds] = {}
 
 
+class DiscoveryConfig(BaseModel):
+    """Configuration for LibreNMS device discovery."""
+
+    vm_subnets: list[str] = ["10.2.50.0/24"]
+    include_types: list[str] = ["firewall", "network", "server", "wireless"]
+    auto_sync: bool = False
+    sync_interval: int = 3600  # seconds
+
+
 class AppConfig(BaseModel):
     auth: AuthConfig = AuthConfig()
     data_sources: DataSourcesConfig = DataSourcesConfig()
     polling: PollingConfig = PollingConfig()
     notifications: NotificationsConfig = NotificationsConfig()
     alert_thresholds: AlertThresholdsConfig = AlertThresholdsConfig()
+    discovery: DiscoveryConfig = DiscoveryConfig()
 
 
 class Settings(BaseSettings):
