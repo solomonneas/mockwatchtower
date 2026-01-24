@@ -7,8 +7,9 @@ from fastapi import APIRouter
 from app.cache import redis_cache
 from app.polling.librenms import LibreNMSClient
 from app.polling.netdisco import NetdiscoClient
-from app.polling.scheduler import scheduler, poll_device_status, poll_alerts, CACHE_DEVICES, CACHE_DEVICE_STATUS, CACHE_ALERTS, CACHE_LAST_POLL
-from app.config import get_config
+from app.polling.proxmox import ProxmoxClient
+from app.polling.scheduler import scheduler, poll_device_status, poll_alerts, CACHE_DEVICES, CACHE_DEVICE_STATUS, CACHE_ALERTS, CACHE_LAST_POLL, CACHE_PROXMOX, CACHE_PROXMOX_VMS
+from app.config import get_config, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,63 @@ async def test_netdisco():
         return {"status": "error", "message": "Connection failed. Check server logs for details."}
 
 
+@router.get("/test/proxmox")
+async def test_proxmox():
+    """Test Proxmox API connectivity."""
+    settings = get_settings()
+    proxmox_configs = settings.get_all_proxmox_configs()
+
+    if not proxmox_configs:
+        return {"status": "not_configured", "message": "Proxmox not configured in config.yaml"}
+
+    results = []
+    for instance_name, config in proxmox_configs:
+        try:
+            async with ProxmoxClient(
+                base_url=config.url,
+                token_id=config.token_id,
+                token_secret=config.token_secret,
+                verify_ssl=config.verify_ssl,
+            ) as client:
+                healthy = await client.health_check()
+                if healthy:
+                    nodes = await client.get_nodes()
+                    vms = await client.get_vms(running_only=True)
+                    results.append({
+                        "instance": instance_name,
+                        "status": "ok",
+                        "url": config.url,
+                        "node_count": len(nodes),
+                        "running_vms": len(vms),
+                        "nodes": [
+                            {"name": n.node, "status": n.status, "cpu": n.cpu_percent, "memory": n.memory_percent}
+                            for n in nodes
+                        ],
+                    })
+                else:
+                    results.append({
+                        "instance": instance_name,
+                        "status": "error",
+                        "url": config.url,
+                        "message": "Health check failed",
+                    })
+        except Exception as e:
+            logger.exception("Proxmox connectivity test failed for %s", instance_name)
+            results.append({
+                "instance": instance_name,
+                "status": "error",
+                "url": config.url,
+                "message": "Connection failed. Check server logs for details.",
+            })
+
+    connected = sum(1 for r in results if r["status"] == "ok")
+    return {
+        "status": "ok" if connected == len(results) else ("partial" if connected > 0 else "error"),
+        "message": f"{connected}/{len(results)} Proxmox instances connected",
+        "instances": results,
+    }
+
+
 @router.get("/test/all")
 async def test_all_sources():
     """Test all configured data sources."""
@@ -114,9 +172,18 @@ async def test_all_sources():
     # Test Netdisco
     results["netdisco"] = await test_netdisco()
 
+    # Test Proxmox
+    results["proxmox"] = await test_proxmox()
+
     # Summary
-    configured = sum(1 for r in results.values() if r["status"] != "not_configured")
-    connected = sum(1 for r in results.values() if r["status"] == "ok")
+    def is_configured(r):
+        return r.get("status") != "not_configured"
+
+    def is_connected(r):
+        return r.get("status") == "ok"
+
+    configured = sum(1 for r in results.values() if is_configured(r))
+    connected = sum(1 for r in results.values() if is_connected(r))
 
     return {
         "summary": f"{connected}/{configured} sources connected",
@@ -185,4 +252,32 @@ async def get_cached_alerts():
     return {
         "alert_count": len(alerts),
         "alerts": alerts,
+    }
+
+
+@router.get("/cache/proxmox")
+async def get_cached_proxmox():
+    """View cached Proxmox node data from last poll."""
+    nodes = await redis_cache.get_json(CACHE_PROXMOX)
+
+    if not nodes:
+        return {"status": "empty", "message": "No cached Proxmox data. Check Proxmox config and run /api/diagnostics/poll/now."}
+
+    return {
+        "node_count": len(nodes),
+        "nodes": nodes,
+    }
+
+
+@router.get("/cache/proxmox/vms")
+async def get_cached_proxmox_vms():
+    """View cached Proxmox VM data from last poll."""
+    vms = await redis_cache.get_json(CACHE_PROXMOX_VMS)
+
+    if not vms:
+        return {"status": "empty", "message": "No cached VM data."}
+
+    return {
+        "vm_count": len(vms),
+        "vms": vms,
     }

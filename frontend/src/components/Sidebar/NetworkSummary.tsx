@@ -1,5 +1,6 @@
 import { useNocStore } from '../../store/nocStore'
 import StatusDot from '../common/StatusDot'
+import VMList from './VMList'
 
 export default function NetworkSummary() {
   const topology = useNocStore((state) => state.topology)
@@ -131,6 +132,9 @@ export default function NetworkSummary() {
           ))}
         </div>
       )}
+
+      {/* Virtual Machines (Proxmox) */}
+      <VMList />
     </div>
   )
 }

@@ -26,6 +26,13 @@ data_sources:
     token_id: "watchtower@pam!monitoring"
     token_secret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     verify_ssl: false
+    # Additional Proxmox instances (optional)
+    additional:
+      # - name: "secondary"
+      #   url: "https://proxmox2.local:8006"
+      #   token_id: "watchtower@pam!monitoring"
+      #   token_secret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      #   verify_ssl: false
 
 # Polling Intervals (seconds)
 polling:

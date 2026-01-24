@@ -15,9 +15,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.cache import redis_cache
-from app.config import get_config
+from app.config import get_config, get_settings
 from app.models.device import DeviceStatus
 from app.polling.librenms import LibreNMSClient, LibreNMSDevice
+from app.polling.proxmox import ProxmoxClient
 from app.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ CACHE_DEVICES = "watchtower:devices"
 CACHE_DEVICE_STATUS = "watchtower:device_status"
 CACHE_ALERTS = "watchtower:alerts"
 CACHE_HEALTH = "watchtower:health"
+CACHE_PROXMOX = "watchtower:proxmox"
+CACHE_PROXMOX_VMS = "watchtower:proxmox_vms"
 CACHE_LAST_POLL = "watchtower:last_poll"
 
 
@@ -79,6 +82,17 @@ class PollingScheduler:
             replace_existing=True,
         )
 
+        # Proxmox polling (if configured)
+        settings = get_settings()
+        if settings.get_all_proxmox_configs():
+            self._scheduler.add_job(
+                poll_proxmox,
+                IntervalTrigger(seconds=polling.proxmox),
+                id="poll_proxmox",
+                name="Poll Proxmox node and VM stats",
+                replace_existing=True,
+            )
+
         self._scheduler.start()
         logger.info(
             "Polling scheduler started: device_status=%ds, interfaces=%ds",
@@ -97,6 +111,7 @@ class PollingScheduler:
         await asyncio.gather(
             poll_device_status(),
             poll_alerts(),
+            poll_proxmox(),
             return_exceptions=True,
         )
 
@@ -306,6 +321,80 @@ async def poll_alerts() -> None:
 
     except Exception as e:
         logger.error("Failed to poll alerts: %s", e)
+
+
+async def poll_proxmox() -> None:
+    """
+    Poll node stats and running VMs from all configured Proxmox instances.
+    """
+    try:
+        settings = get_settings()
+        proxmox_configs = settings.get_all_proxmox_configs()
+
+        if not proxmox_configs:
+            return
+
+        all_nodes: dict[str, dict[str, Any]] = {}
+        all_vms: list[dict[str, Any]] = []
+
+        for instance_name, config in proxmox_configs:
+            try:
+                async with ProxmoxClient(
+                    base_url=config.url,
+                    token_id=config.token_id,
+                    token_secret=config.token_secret,
+                    verify_ssl=config.verify_ssl,
+                ) as client:
+                    # Get node stats
+                    nodes = await client.get_nodes()
+                    for node in nodes:
+                        # Use instance:node as key for multi-cluster support
+                        key = f"{instance_name}:{node.node}" if instance_name != "primary" else node.node
+                        all_nodes[key] = {
+                            "node": node.node,
+                            "instance": instance_name,
+                            "status": node.status,
+                            "cpu": node.cpu_percent,
+                            "memory": node.memory_percent,
+                            "maxcpu": node.maxcpu,
+                            "maxmem": node.maxmem,
+                            "uptime": node.uptime,
+                        }
+
+                    # Get running VMs and containers
+                    vms = await client.get_vms(running_only=True)
+                    for vm in vms:
+                        all_vms.append({
+                            "vmid": vm.vmid,
+                            "name": vm.name,
+                            "node": vm.node,
+                            "instance": instance_name,
+                            "type": vm.type,
+                            "status": vm.status,
+                            "cpu": vm.cpu_percent,
+                            "memory": vm.memory_percent,
+                            "cpus": vm.cpus,
+                            "maxmem": vm.maxmem,
+                            "uptime": vm.uptime,
+                            "netin": vm.netin,
+                            "netout": vm.netout,
+                        })
+
+            except Exception as e:
+                logger.warning("Failed to poll Proxmox instance %s: %s", instance_name, e)
+
+        # Cache results
+        await redis_cache.set(CACHE_PROXMOX, all_nodes, ttl=300)
+        await redis_cache.set(CACHE_PROXMOX_VMS, all_vms, ttl=300)
+
+        logger.debug(
+            "Polled Proxmox: %d nodes, %d running VMs/containers",
+            len(all_nodes),
+            len(all_vms),
+        )
+
+    except Exception as e:
+        logger.error("Failed to poll Proxmox: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

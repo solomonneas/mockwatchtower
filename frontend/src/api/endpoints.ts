@@ -44,3 +44,38 @@ export async function acknowledgeAlert(alertId: string): Promise<void> {
 export async function resolveAlert(alertId: string): Promise<void> {
   await apiClient.post(`/alert/${alertId}/resolve`)
 }
+
+// Proxmox VMs
+export interface ProxmoxVM {
+  vmid: number
+  name: string
+  node: string
+  instance: string
+  type: 'qemu' | 'lxc'
+  status: string
+  cpu: number
+  memory: number
+  cpus: number | null
+  maxmem: number | null
+  uptime: number | null
+  netin: number | null
+  netout: number | null
+}
+
+export interface VMSummary {
+  total_running: number
+  total_qemu: number
+  total_lxc: number
+  total_cpus: number
+  total_memory_gb: number
+}
+
+export interface VMListResponse {
+  vms: ProxmoxVM[]
+  summary: VMSummary
+}
+
+export async function fetchVMs(): Promise<VMListResponse> {
+  const response = await apiClient.get<VMListResponse>('/vms')
+  return response.data
+}

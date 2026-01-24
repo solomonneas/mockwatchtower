@@ -17,7 +17,7 @@ from app.models.device import Device, DeviceStatus, DeviceType, DeviceStats
 from app.models.topology import Topology, Cluster, Position
 from app.models.connection import Connection, ExternalLink, ConnectionEndpoint, ExternalTarget, ConnectionType, ConnectionStatus
 from app.models.device import Interface
-from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH
+from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH, CACHE_PROXMOX
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,42 @@ def librenms_status_to_device_status(status: str | None) -> DeviceStatus:
         return DeviceStatus.UNKNOWN
 
 
+def match_proxmox_node(
+    librenms_data: dict[str, Any] | None,
+    proxmox_nodes: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Match a LibreNMS device to its Proxmox node counterpart.
+
+    Proxmox hosts typically have sysName like "pve1" or "pve1.domain.com".
+    We match against the Proxmox node name (e.g., "pve1").
+    """
+    if not librenms_data:
+        return None
+
+    sysname = librenms_data.get("sysName") or ""
+    hostname = librenms_data.get("hostname") or ""
+
+    # Extract base name (e.g., "pve1" from "pve1.domain.com")
+    sysname_base = sysname.split(".")[0].lower()
+    hostname_base = hostname.split(".")[0].lower()
+
+    for node_key, node_data in proxmox_nodes.items():
+        node_name = node_data.get("node", "").lower()
+
+        # Direct match
+        if node_name == sysname_base or node_name == hostname_base:
+            return node_data
+
+        # Handle multi-instance keys like "secondary:pve2"
+        if ":" in node_key:
+            _, actual_node = node_key.split(":", 1)
+            if actual_node.lower() == sysname_base or actual_node.lower() == hostname_base:
+                return node_data
+
+    return None
+
+
 def cluster_type_to_device_type(cluster_type: str) -> DeviceType:
     """Convert cluster type to device type."""
     mapping = {
@@ -128,6 +164,9 @@ async def get_aggregated_topology() -> Topology:
     librenms_devices = await redis_cache.get_json(CACHE_DEVICES) or []
     librenms_alerts = await redis_cache.get_json(CACHE_ALERTS) or []
     health_data = await redis_cache.get_json(CACHE_HEALTH) or {}
+
+    # Load cached Proxmox data (fallback for Linux hosts)
+    proxmox_nodes = await redis_cache.get_json(CACHE_PROXMOX) or {}
 
     # Build lookup indexes
     by_ip, by_hostname = build_librenms_indexes(librenms_devices)
@@ -168,6 +207,13 @@ async def get_aggregated_topology() -> Topology:
             device_health = health_data.get(str(librenms_device_id), {})
             cpu = device_health.get("cpu") or 0.0
             memory = device_health.get("memory") or 0.0
+
+            # Fallback to Proxmox data for Linux hosts (LibreNMS health is empty)
+            if cpu == 0.0 and memory == 0.0 and proxmox_nodes:
+                proxmox_match = match_proxmox_node(librenms_data, proxmox_nodes)
+                if proxmox_match:
+                    cpu = proxmox_match.get("cpu") or 0.0
+                    memory = proxmox_match.get("memory") or 0.0
 
             # Get cached interfaces
             interfaces = await _get_device_interfaces(librenms_device_id)

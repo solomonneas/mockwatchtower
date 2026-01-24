@@ -29,11 +29,22 @@ class NetdiscoConfig(BaseModel):
     password: str = ""
 
 
-class ProxmoxConfig(BaseModel):
+class ProxmoxInstanceConfig(BaseModel):
+    """Configuration for a single Proxmox instance."""
+    name: str = "primary"
     url: str = ""
     token_id: str = ""
     token_secret: str = ""
     verify_ssl: bool = False
+
+
+class ProxmoxConfig(BaseModel):
+    """Proxmox configuration with support for multiple instances."""
+    url: str = ""
+    token_id: str = ""
+    token_secret: str = ""
+    verify_ssl: bool = False
+    additional: list[ProxmoxInstanceConfig] = []
 
 
 class DataSourcesConfig(BaseModel):
@@ -198,6 +209,36 @@ class IntegrationSettings:
     @property
     def proxmox_verify_ssl(self) -> bool:
         return self._config.data_sources.proxmox.verify_ssl
+
+    def get_all_proxmox_configs(self) -> list[tuple[str, ProxmoxInstanceConfig]]:
+        """
+        Get all Proxmox instance configurations.
+
+        Returns a list of (name, config) tuples. The primary instance
+        is named "primary"; additional instances use their configured name.
+        """
+        configs: list[tuple[str, ProxmoxInstanceConfig]] = []
+        proxmox = self._config.data_sources.proxmox
+
+        # Primary instance (only if configured)
+        if proxmox.url:
+            configs.append((
+                "primary",
+                ProxmoxInstanceConfig(
+                    name="primary",
+                    url=proxmox.url,
+                    token_id=proxmox.token_id,
+                    token_secret=proxmox.token_secret,
+                    verify_ssl=proxmox.verify_ssl,
+                )
+            ))
+
+        # Additional instances
+        for instance in proxmox.additional:
+            if instance.url:
+                configs.append((instance.name, instance))
+
+        return configs
 
 
 def get_settings() -> IntegrationSettings:
