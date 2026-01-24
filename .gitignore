@@ -42,9 +42,10 @@ plan.md
 *.plan.md
 blueprint.md
 
-# Local config (contains secrets)
+# Local config (contains secrets and network info)
 config/config.yaml
 config/topology.yaml
+config/physical_links.yaml
 
 # Coverage
 coverage/

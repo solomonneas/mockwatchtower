@@ -291,7 +291,8 @@ async def get_aggregated_topology() -> Topology:
 
     # Build connections from discovered CDP/LLDP links
     connections: list[Connection] = []
-    seen_connections: set[tuple[str, str]] = set()  # Track bidirectional duplicates
+    seen_connection_ids: set[str] = set()  # Track by connection ID
+    seen_ports: set[tuple[str, str]] = set()  # Track (device, port) pairs used by CDP/LLDP
 
     cached_links = await redis_cache.get_json(CACHE_LINKS) or []
 
@@ -307,14 +308,28 @@ async def get_aggregated_topology() -> Topology:
         if not source_topo_id or not target_topo_id:
             continue
 
-        # Skip duplicate connections (A->B and B->A are the same link)
-        conn_key = tuple(sorted([source_topo_id, target_topo_id]))
-        if conn_key in seen_connections:
+        local_port = link.get("local_port")
+        remote_port = link.get("remote_port")
+
+        # Create unique connection ID based on ports
+        conn_id = f"link-{source_topo_id}-{target_topo_id}"
+        if local_port:
+            # Use port info for more specific ID to allow multiple links
+            port_suffix = local_port.replace("/", "-").replace(" ", "_")
+            conn_id = f"cdp-{source_topo_id}-{port_suffix}"
+
+        # Skip if this exact connection ID already seen
+        if conn_id in seen_connection_ids:
             continue
-        seen_connections.add(conn_key)
+        seen_connection_ids.add(conn_id)
+
+        # Track this port as used by CDP/LLDP discovery
+        if local_port:
+            seen_ports.add((source_topo_id, local_port))
+        if remote_port:
+            seen_ports.add((target_topo_id, remote_port))
 
         # Get utilization from source port interface
-        local_port = link.get("local_port")
         utilization = await _get_port_utilization(local_librenms_id, local_port)
 
         # Determine connection status based on device status
@@ -331,19 +346,95 @@ async def get_aggregated_topology() -> Topology:
             conn_status = ConnectionStatus.UNKNOWN
 
         connections.append(Connection(
-            id=f"link-{source_topo_id}-{target_topo_id}",
+            id=conn_id,
             source=ConnectionEndpoint(
                 device=source_topo_id,
                 port=local_port,
             ),
             target=ConnectionEndpoint(
                 device=target_topo_id,
-                port=link.get("remote_port"),
+                port=remote_port,
             ),
             connection_type=ConnectionType.TRUNK,
             speed=10000,  # Default to 10Gbps for discovered links
             status=conn_status,
             utilization=utilization,
+        ))
+
+    # Add static connections from topology.yaml (for devices without CDP/LLDP)
+    for conn_config in topo_config.get("connections", []):
+        source_cfg = conn_config.get("source", {})
+        target_cfg = conn_config.get("target", {})
+
+        source_device = source_cfg.get("device")
+        target_device = target_cfg.get("device")
+
+        # Skip if devices don't exist in our topology
+        if not source_device or not target_device:
+            continue
+        if source_device not in devices or target_device not in devices:
+            continue
+
+        source_port = source_cfg.get("port")
+        target_port = target_cfg.get("port")
+        conn_id = conn_config.get("id", f"static-{source_device}-{target_device}")
+
+        # Skip if this exact connection ID already seen
+        if conn_id in seen_connection_ids:
+            continue
+
+        # Skip if this port was already discovered via CDP/LLDP
+        if source_port and (source_device, source_port) in seen_ports:
+            continue
+        if target_port and (target_device, target_port) in seen_ports:
+            continue
+
+        seen_connection_ids.add(conn_id)
+
+        # Determine connection status based on device status
+        source_dev = devices.get(source_device)
+        target_dev = devices.get(target_device)
+        if source_dev and target_dev:
+            if source_dev.status == DeviceStatus.DOWN or target_dev.status == DeviceStatus.DOWN:
+                conn_status = ConnectionStatus.DOWN
+            elif source_dev.status == DeviceStatus.UNKNOWN or target_dev.status == DeviceStatus.UNKNOWN:
+                conn_status = ConnectionStatus.UNKNOWN
+            else:
+                conn_status = ConnectionStatus.UP
+        else:
+            conn_status = ConnectionStatus.UNKNOWN
+
+        # Map connection type string to enum
+        conn_type_str = conn_config.get("connection_type", "trunk").lower()
+        conn_type_map = {
+            "trunk": ConnectionType.TRUNK,
+            "access": ConnectionType.ACCESS,
+            "uplink": ConnectionType.UPLINK,
+            "stack": ConnectionType.STACK,
+            "peer": ConnectionType.PEER,
+            "management": ConnectionType.MANAGEMENT,
+        }
+        conn_type = conn_type_map.get(conn_type_str, ConnectionType.TRUNK)
+
+        # Get utilization for source port if possible
+        source_librenms_id = topo_to_librenms.get(source_device)
+        utilization = await _get_port_utilization(source_librenms_id, source_port)
+
+        connections.append(Connection(
+            id=conn_id,
+            source=ConnectionEndpoint(
+                device=source_device,
+                port=source_port,
+            ),
+            target=ConnectionEndpoint(
+                device=target_device,
+                port=target_port,
+            ),
+            connection_type=conn_type,
+            speed=conn_config.get("speed", 1000),
+            status=conn_status,
+            utilization=utilization,
+            description=conn_config.get("description"),
         ))
 
     # Build external links

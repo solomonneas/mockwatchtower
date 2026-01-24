@@ -20,6 +20,7 @@ import ClusterNode from './nodes/ClusterNode'
 import DeviceNode from './nodes/DeviceNode'
 import ExternalNode from './nodes/ExternalNode'
 import TrafficEdge from './edges/TrafficEdge'
+import PhysicalLinkEdge from './edges/PhysicalLinkEdge'
 import type { Topology, Cluster } from '../../types/topology'
 
 const nodeTypes = {
@@ -30,6 +31,7 @@ const nodeTypes = {
 
 const edgeTypes = {
   traffic: TrafficEdge,
+  physical: PhysicalLinkEdge,
 } as const
 
 const STORAGE_KEY = 'watchtower-node-positions'
@@ -479,10 +481,15 @@ function topologyToEdges(
           id: `edge-${edgeKey}`,
           source: actualSource,
           target: actualTarget,
-          type: 'traffic',
+          type: 'physical',
           data: {
+            sourcePort: conn.source?.port,
+            targetPort: conn.target?.port,
+            speed: conn.speed ?? 1000,
             utilization: conn.utilization ?? 0,
             status: conn.status ?? 'up',
+            connectionType: conn.connection_type,
+            description: conn.description,
           },
         })
       }
@@ -513,10 +520,14 @@ function topologyToEdges(
         id: `edge-${link.id}`,
         source: sourceId,
         target: targetId,
-        type: 'traffic',
+        type: 'physical',
         data: {
+          sourcePort: link.source?.port,
+          speed: link.speed ?? 1000,
           utilization: link.utilization ?? 0,
           status: link.status ?? 'up',
+          connectionType: 'wan',
+          description: link.description,
         },
       })
     }

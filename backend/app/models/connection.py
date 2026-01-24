@@ -19,6 +19,8 @@ class ConnectionType(str, Enum):
     UPLINK = "uplink"
     STACK = "stack"
     WAN = "wan"
+    PEER = "peer"
+    MANAGEMENT = "management"
 
 
 class ConnectionEndpoint(BaseModel):
