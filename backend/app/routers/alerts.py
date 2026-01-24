@@ -1,32 +1,105 @@
-"""Alert API routes."""
+"""Alert API routes - Real alerts from LibreNMS and device status."""
 
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
-from ..mock_data import generate_mock_alerts, generate_mock_topology
-from ..models.alert import Alert, AlertStatus, AlertSummary
+from ..cache import redis_cache
+from ..polling.aggregator import get_aggregated_topology
+from ..polling.scheduler import CACHE_ALERTS
+from ..models.alert import Alert, AlertStatus, AlertSeverity, AlertSummary
+from ..models.device import DeviceStatus
 
 router = APIRouter()
 
-# In-memory alert store for development
-_mock_alerts: list[Alert] = []
+# In-memory acknowledgment tracking (persists until service restart)
+_acknowledged_alerts: set[str] = set()
 
 
-def _ensure_alerts():
-    """Ensure we have mock alerts generated."""
-    global _mock_alerts
-    if not _mock_alerts:
-        topology = generate_mock_topology()
-        _mock_alerts = generate_mock_alerts(topology.devices, count=3)
+async def _get_device_down_alerts() -> list[Alert]:
+    """Generate alerts for devices that are currently down."""
+    alerts = []
+
+    try:
+        topology = await get_aggregated_topology()
+
+        for device_id, device in topology.devices.items():
+            if device.status == DeviceStatus.DOWN:
+                alert_id = f"device-down-{device_id}"
+                alerts.append(Alert(
+                    id=alert_id,
+                    device_id=device_id,
+                    severity=AlertSeverity.CRITICAL,
+                    message=f"Device unreachable: {device.display_name}",
+                    details=f"IP: {device.ip or 'unknown'}",
+                    status=AlertStatus.ACKNOWLEDGED if alert_id in _acknowledged_alerts else AlertStatus.ACTIVE,
+                    timestamp=device.last_seen or datetime.utcnow(),
+                ))
+    except Exception as e:
+        # Log but don't fail - we can still return LibreNMS alerts
+        print(f"Error getting device down alerts: {e}")
+
+    return alerts
+
+
+async def _get_librenms_alerts() -> list[Alert]:
+    """Get alerts from LibreNMS cache."""
+    alerts = []
+
+    try:
+        cached_alerts = await redis_cache.get_json(CACHE_ALERTS) or []
+
+        for alert in cached_alerts:
+            alert_id = f"librenms-{alert.get('id', 'unknown')}"
+
+            # Map LibreNMS severity to our enum
+            severity_map = {
+                "critical": AlertSeverity.CRITICAL,
+                "warning": AlertSeverity.WARNING,
+                "ok": AlertSeverity.RECOVERY,
+            }
+            severity_str = str(alert.get("severity", "warning")).lower()
+            severity = severity_map.get(severity_str, AlertSeverity.WARNING)
+
+            # Get timestamp
+            timestamp_str = alert.get("timestamp")
+            if timestamp_str:
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                except:
+                    timestamp = datetime.utcnow()
+            else:
+                timestamp = datetime.utcnow()
+
+            alerts.append(Alert(
+                id=alert_id,
+                device_id=alert.get("hostname", str(alert.get("device_id", "unknown"))),
+                severity=severity,
+                message=alert.get("name") or alert.get("rule") or "LibreNMS Alert",
+                details=alert.get("notes"),
+                status=AlertStatus.ACKNOWLEDGED if alert_id in _acknowledged_alerts else AlertStatus.ACTIVE,
+                timestamp=timestamp,
+            ))
+    except Exception as e:
+        print(f"Error getting LibreNMS alerts: {e}")
+
+    return alerts
 
 
 @router.get("/alerts", response_model=list[AlertSummary])
 async def list_alerts(status: AlertStatus | None = None):
-    """List all active alerts."""
-    _ensure_alerts()
+    """List all active alerts from device status and LibreNMS."""
+    # Combine both alert sources
+    device_alerts = await _get_device_down_alerts()
+    librenms_alerts = await _get_librenms_alerts()
 
-    alerts = _mock_alerts
+    all_alerts = device_alerts + librenms_alerts
+
+    # Filter by status if requested
     if status:
-        alerts = [a for a in alerts if a.status == status]
+        all_alerts = [a for a in all_alerts if a.status == status]
+
+    # Sort by timestamp (newest first)
+    all_alerts.sort(key=lambda a: a.timestamp, reverse=True)
 
     return [
         AlertSummary(
@@ -37,16 +110,17 @@ async def list_alerts(status: AlertStatus | None = None):
             timestamp=alert.timestamp,
             status=alert.status,
         )
-        for alert in sorted(alerts, key=lambda a: a.timestamp, reverse=True)
+        for alert in all_alerts
     ]
 
 
 @router.get("/alert/{alert_id}", response_model=Alert)
 async def get_alert(alert_id: str):
     """Get details of a specific alert."""
-    _ensure_alerts()
+    device_alerts = await _get_device_down_alerts()
+    librenms_alerts = await _get_librenms_alerts()
 
-    for alert in _mock_alerts:
+    for alert in device_alerts + librenms_alerts:
         if alert.id == alert_id:
             return alert
 
@@ -56,24 +130,12 @@ async def get_alert(alert_id: str):
 @router.post("/alert/{alert_id}/acknowledge")
 async def acknowledge_alert(alert_id: str):
     """Acknowledge an alert."""
-    _ensure_alerts()
-
-    for alert in _mock_alerts:
-        if alert.id == alert_id:
-            alert.status = AlertStatus.ACKNOWLEDGED
-            return {"status": "acknowledged", "alert_id": alert_id}
-
-    raise HTTPException(status_code=404, detail=f"Alert '{alert_id}' not found")
+    _acknowledged_alerts.add(alert_id)
+    return {"status": "acknowledged", "alert_id": alert_id}
 
 
 @router.post("/alert/{alert_id}/resolve")
 async def resolve_alert(alert_id: str):
-    """Resolve an alert."""
-    _ensure_alerts()
-
-    for alert in _mock_alerts:
-        if alert.id == alert_id:
-            alert.status = AlertStatus.RESOLVED
-            return {"status": "resolved", "alert_id": alert_id}
-
-    raise HTTPException(status_code=404, detail=f"Alert '{alert_id}' not found")
+    """Resolve an alert (removes from acknowledged set)."""
+    _acknowledged_alerts.discard(alert_id)
+    return {"status": "resolved", "alert_id": alert_id}

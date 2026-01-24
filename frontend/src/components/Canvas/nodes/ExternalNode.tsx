@@ -11,31 +11,63 @@ interface ExternalNodeProps {
   data: ExternalNodeData
 }
 
+// Color schemes for different external types
+const typeStyles = {
+  campus: {
+    border: 'border-amber-500/60',
+    glow: 'shadow-[0_0_15px_rgba(217,119,6,0.3)]',
+    icon: 'text-amber-400',
+    badge: 'text-amber-400/80',
+  },
+  ix: {
+    border: 'border-purple-500/60',
+    glow: 'shadow-[0_0_15px_rgba(168,85,247,0.3)]',
+    icon: 'text-purple-400',
+    badge: 'text-purple-400/80',
+  },
+  cloud: {
+    border: 'border-cyan-500/60',
+    glow: 'shadow-[0_0_15px_rgba(6,182,212,0.4)]',
+    icon: 'text-cyan-400',
+    badge: 'text-cyan-400/80',
+  },
+}
+
 function ExternalNode({ data }: ExternalNodeProps) {
   const { label, type, icon } = data
+  const style = typeStyles[type] || typeStyles.cloud
 
   return (
     <>
       <Handle type="target" position={Position.Right} className="!bg-border-default" />
       <Handle type="source" position={Position.Right} className="!bg-border-default" />
 
-      <div className="bg-bg-tertiary border border-border-muted rounded-xl px-4 py-3 min-w-[140px] relative">
-        <div className="flex items-center gap-2">
-          <ExternalIcon type={icon} />
+      <div
+        className={`
+          bg-bg-secondary/90 backdrop-blur-sm
+          border-2 ${style.border}
+          rounded-xl px-4 py-3 min-w-[140px] relative
+          ${style.glow}
+          transition-all duration-300
+          hover:scale-105
+        `}
+      >
+        <div className="flex items-center gap-3">
+          <ExternalIcon type={icon} colorClass={style.icon} />
           <div>
-            <div className="text-sm font-medium text-text-secondary">{label}</div>
-            <div className="text-xs text-text-muted capitalize">{type}</div>
+            <div className="text-sm font-semibold text-text-primary">{label}</div>
+            <div className={`text-xs font-medium capitalize ${style.badge}`}>{type}</div>
           </div>
         </div>
-        {/* Gray hollow dot indicating "not monitored" */}
-        <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border-2 border-text-muted bg-bg-tertiary" />
+        {/* Colored ring indicator */}
+        <div className={`absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full ${style.border} border-2 bg-bg-secondary`} />
       </div>
     </>
   )
 }
 
-function ExternalIcon({ type }: { type: string }) {
-  const iconClass = 'w-5 h-5 text-text-muted'
+function ExternalIcon({ type, colorClass }: { type: string; colorClass: string }) {
+  const iconClass = `w-6 h-6 ${colorClass}`
 
   switch (type) {
     case 'building':
