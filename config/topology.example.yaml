@@ -1,0 +1,145 @@
+# Watchtower Topology Configuration
+# Copy this file to topology.yaml and customize for your network
+#
+# Connections are auto-discovered from LibreNMS CDP/LLDP data, but you can
+# also define manual connections below for devices that don't participate
+# in neighbor discovery protocols.
+
+# Cluster Definitions - Groups of related devices
+clusters:
+  - id: firewalls
+    name: Edge Firewalls
+    type: firewall
+    icon: shield
+    position: { x: 400, y: 50 }
+    devices:
+      - fw-1
+      - fw-2
+
+  - id: core-switches
+    name: Core Switches
+    type: switch
+    icon: switch
+    position: { x: 400, y: 250 }
+    devices:
+      - sw-core-1
+      - sw-core-2
+
+  - id: servers
+    name: Server Cluster
+    type: server
+    icon: server
+    position: { x: 400, y: 450 }
+    devices:
+      - srv-1
+      - srv-2
+      - srv-3
+
+# Device Metadata
+# If using LibreNMS auto-discovery, you can add librenms_hostname to link
+# devices explicitly (otherwise matches by IP or hostname prefix)
+devices:
+  fw-1:
+    display_name: Firewall Primary
+    model: Palo Alto PA-450
+    ip: 10.0.1.1
+    location: Main Data Center
+    role: primary
+    # librenms_hostname: fw-1.example.com  # Optional: explicit LibreNMS match
+
+  fw-2:
+    display_name: Firewall Secondary
+    model: Palo Alto PA-450
+    ip: 10.0.1.2
+    location: Main Data Center
+    role: secondary
+
+  sw-core-1:
+    display_name: Core Switch 1
+    model: Cisco Catalyst 9300-48P
+    ip: 10.0.1.10
+    location: MDF Rack A
+    port_count: 48
+
+  sw-core-2:
+    display_name: Core Switch 2
+    model: Cisco Catalyst 9300-48P
+    ip: 10.0.1.11
+    location: MDF Rack A
+    port_count: 48
+
+  srv-1:
+    display_name: Server Node 1
+    model: Dell PowerEdge R750
+    ip: 10.0.2.1
+    location: Server Rack 1
+
+  srv-2:
+    display_name: Server Node 2
+    model: Dell PowerEdge R750
+    ip: 10.0.2.2
+    location: Server Rack 1
+
+  srv-3:
+    display_name: Server Node 3
+    model: Dell PowerEdge R750
+    ip: 10.0.2.3
+    location: Server Rack 1
+
+# Manual Connections (optional)
+# Most connections are auto-discovered from LibreNMS CDP/LLDP data.
+# Define manual connections here for devices that don't support CDP/LLDP.
+connections:
+  # Example: Firewall uplinks (firewalls often don't run CDP/LLDP)
+  - id: fw1-to-sw1
+    source: { device: fw-1, port: eth1/1 }
+    target: { device: sw-core-1, port: Gi1/0/48 }
+    type: trunk
+    speed: 10000  # Mbps
+
+  - id: fw2-to-sw1
+    source: { device: fw-2, port: eth1/1 }
+    target: { device: sw-core-1, port: Gi1/0/47 }
+    type: trunk
+    speed: 10000
+
+  # Example: Server connections (if servers don't run LLDP)
+  - id: srv1-to-sw1
+    source: { device: srv-1, port: eno1 }
+    target: { device: sw-core-1, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+  - id: srv2-to-sw1
+    source: { device: srv-2, port: eno1 }
+    target: { device: sw-core-1, port: Gi1/0/2 }
+    type: access
+    speed: 10000
+
+  - id: srv3-to-sw2
+    source: { device: srv-3, port: eno1 }
+    target: { device: sw-core-2, port: Gi1/0/1 }
+    type: access
+    speed: 10000
+
+# External Links (WAN, upstream providers)
+external_links:
+  - id: wan-primary
+    source: { device: fw-1, port: eth1/2 }
+    target:
+      label: ISP Primary
+      type: isp
+      icon: globe
+    provider: Example ISP
+    circuit_id: ISP-12345
+    speed: 1000  # Mbps
+
+  - id: wan-backup
+    source: { device: fw-2, port: eth1/2 }
+    target:
+      label: ISP Backup
+      type: isp
+      icon: globe
+    provider: Backup ISP
+    circuit_id: BKP-67890
+    speed: 500
