@@ -438,6 +438,23 @@ function topologyToEdges(
   const edges: Edge[] = []
   const addedEdges = new Set<string>()
 
+  // Helper to determine edge status based on device states
+  const getEdgeStatus = (sourceDeviceId: string, targetDeviceId: string, connStatus: string): string => {
+    const sourceDevice = topology.devices[sourceDeviceId]
+    const targetDevice = topology.devices[targetDeviceId]
+
+    // If either device is down, the edge is down
+    if (sourceDevice?.status === 'down' || targetDevice?.status === 'down') {
+      return 'down'
+    }
+    // If either device is degraded, show degraded
+    if (sourceDevice?.status === 'degraded' || targetDevice?.status === 'degraded') {
+      return 'degraded'
+    }
+    // Otherwise use the connection's own status
+    return connStatus ?? 'up'
+  }
+
   // Process all device-to-device connections
   topology.connections.forEach((conn) => {
     const sourceDevice = conn.source.device
@@ -477,6 +494,9 @@ function topologyToEdges(
       if (!addedEdges.has(edgeKey)) {
         addedEdges.add(edgeKey)
 
+        // Determine status based on device states
+        const edgeStatus = getEdgeStatus(sourceDevice, targetDevice, conn.status)
+
         edges.push({
           id: `edge-${edgeKey}`,
           source: actualSource,
@@ -487,7 +507,7 @@ function topologyToEdges(
             targetPort: conn.target?.port,
             speed: conn.speed ?? 1000,
             utilization: conn.utilization ?? 0,
-            status: conn.status ?? 'up',
+            status: edgeStatus,
             connectionType: conn.connection_type,
             description: conn.description,
           },

@@ -7,6 +7,29 @@ import { useNocStore } from './store/nocStore'
 import { useWebSocket } from './hooks/useWebSocket'
 import { fetchTopology } from './api/endpoints'
 
+// Debug helper - expose store methods to window for testing
+if (typeof window !== 'undefined') {
+  (window as unknown as { watchtower: unknown }).watchtower = {
+    setDeviceDown: (deviceId: string) => {
+      useNocStore.getState().updateDeviceStatus(deviceId, 'down')
+      console.log(`Set ${deviceId} to DOWN`)
+    },
+    setDeviceUp: (deviceId: string) => {
+      useNocStore.getState().updateDeviceStatus(deviceId, 'up')
+      console.log(`Set ${deviceId} to UP`)
+    },
+    listDevices: () => {
+      const topology = useNocStore.getState().topology
+      if (topology) {
+        Object.entries(topology.devices).forEach(([id, dev]) => {
+          console.log(`${id}: ${dev.status}`)
+        })
+      }
+    },
+    getStore: () => useNocStore.getState(),
+  }
+}
+
 function App() {
   const setTopology = useNocStore((state) => state.setTopology)
   const setLoading = useNocStore((state) => state.setLoading)

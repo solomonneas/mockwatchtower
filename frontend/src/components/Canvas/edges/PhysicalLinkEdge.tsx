@@ -105,17 +105,29 @@ function PhysicalLinkEdge({
         style={{ cursor: 'pointer' }}
       />
 
+      {/* Glow effect for down links */}
+      {status === 'down' && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke="#f85149"
+          strokeWidth={strokeWidth + 4}
+          strokeLinecap="round"
+          style={{ opacity: 0.3 }}
+        />
+      )}
+
       {/* Main edge */}
       <path
         id={id}
         d={edgePath}
         fill="none"
         stroke={selected ? '#39d5ff' : strokeColor}
-        strokeWidth={strokeWidth}
+        strokeWidth={status === 'down' ? strokeWidth + 1 : strokeWidth}
         strokeLinecap="round"
         className={status === 'up' ? 'animate-flow' : ''}
         style={{
-          strokeDasharray: status === 'up' ? '8,4' : status === 'down' ? '5,5' : undefined,
+          strokeDasharray: status === 'up' ? '8,4' : undefined,
           transition: 'stroke 0.2s, stroke-width 0.2s',
         }}
         onMouseEnter={() => setHovered(true)}
