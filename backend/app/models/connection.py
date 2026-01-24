@@ -10,6 +10,7 @@ class ConnectionStatus(str, Enum):
     UP = "up"
     DOWN = "down"
     DEGRADED = "degraded"
+    UNKNOWN = "unknown"
 
 
 class ConnectionType(str, Enum):

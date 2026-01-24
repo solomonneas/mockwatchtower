@@ -44,6 +44,7 @@ blueprint.md
 
 # Local config (contains secrets)
 config/config.yaml
+config/topology.yaml
 
 # Coverage
 coverage/
