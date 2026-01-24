@@ -156,7 +156,14 @@ class LibreNMSClient:
         """Get single port by ID"""
         try:
             data = await self._get(f"/ports/{port_id}")
-            ports = data.get("ports", []) if "ports" in data else [data.get("port", {})]
+            # LibreNMS returns {"port": [{...}]} for single port lookup
+            if "ports" in data:
+                ports = data["ports"]
+            elif "port" in data:
+                port_data = data["port"]
+                ports = port_data if isinstance(port_data, list) else [port_data]
+            else:
+                ports = []
             return LibreNMSPort(**ports[0]) if ports and ports[0] else None
         except httpx.HTTPStatusError:
             return None

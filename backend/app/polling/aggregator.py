@@ -17,7 +17,7 @@ from app.models.device import Device, DeviceStatus, DeviceType, DeviceStats
 from app.models.topology import Topology, Cluster, Position
 from app.models.connection import Connection, ExternalLink, ConnectionEndpoint, ExternalTarget, ConnectionType, ConnectionStatus
 from app.models.device import Interface
-from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH, CACHE_PROXMOX
+from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH, CACHE_LINKS, CACHE_PROXMOX
 
 logger = logging.getLogger(__name__)
 
@@ -183,12 +183,15 @@ async def get_aggregated_topology() -> Topology:
     device_configs = topo_config.get("devices", {})
     cluster_configs = topo_config.get("clusters", [])
 
-    # Create device ID to cluster type mapping
+    # Create device ID to cluster mappings
     device_cluster_type: dict[str, str] = {}
+    device_cluster_id: dict[str, str] = {}
     for cluster in cluster_configs:
+        cluster_id = cluster.get("id")
         cluster_type = cluster.get("type", "other")
         for device_id in cluster.get("devices", []):
             device_cluster_type[device_id] = cluster_type
+            device_cluster_id[device_id] = cluster_id
 
     # Build Device objects
     for device_id, config in device_configs.items():
@@ -237,6 +240,7 @@ async def get_aggregated_topology() -> Topology:
             ip=config.get("ip"),
             location=config.get("location"),
             status=status,
+            cluster_id=device_cluster_id.get(device_id),
             stats=DeviceStats(uptime=uptime or 0, cpu=cpu, memory=memory),
             interfaces=interfaces,
             alert_count=alert_count,
@@ -275,28 +279,47 @@ async def get_aggregated_topology() -> Topology:
             status=cluster_status,
         ))
 
-    # Build topology device -> LibreNMS device ID mapping for connection lookups
+    # Build bidirectional mappings between topology device IDs and LibreNMS device IDs
     topo_to_librenms: dict[str, int] = {}
+    librenms_to_topo: dict[int, str] = {}
     for topo_device_id, config in device_configs.items():
         librenms_data = match_librenms_device(topo_device_id, config, by_ip, by_hostname)
         if librenms_data:
-            topo_to_librenms[topo_device_id] = librenms_data.get("device_id")
+            librenms_id = librenms_data.get("device_id")
+            topo_to_librenms[topo_device_id] = librenms_id
+            librenms_to_topo[librenms_id] = topo_device_id
 
-    # Build connections with live utilization data
+    # Build connections from discovered CDP/LLDP links
     connections: list[Connection] = []
-    for conn_config in topo_config.get("connections", []):
-        source_cfg = conn_config.get("source", {})
-        target_cfg = conn_config.get("target", {})
+    seen_connections: set[tuple[str, str]] = set()  # Track bidirectional duplicates
+
+    cached_links = await redis_cache.get_json(CACHE_LINKS) or []
+
+    for link in cached_links:
+        local_librenms_id = link.get("local_device_id")
+        remote_librenms_id = link.get("remote_device_id")
+
+        # Map LibreNMS device IDs to topology device IDs
+        source_topo_id = librenms_to_topo.get(local_librenms_id)
+        target_topo_id = librenms_to_topo.get(remote_librenms_id)
+
+        # Skip if either device isn't in our topology
+        if not source_topo_id or not target_topo_id:
+            continue
+
+        # Skip duplicate connections (A->B and B->A are the same link)
+        conn_key = tuple(sorted([source_topo_id, target_topo_id]))
+        if conn_key in seen_connections:
+            continue
+        seen_connections.add(conn_key)
 
         # Get utilization from source port interface
-        utilization = await _get_port_utilization(
-            topo_to_librenms.get(source_cfg.get("device")),
-            source_cfg.get("port"),
-        )
+        local_port = link.get("local_port")
+        utilization = await _get_port_utilization(local_librenms_id, local_port)
 
         # Determine connection status based on device status
-        source_device = devices.get(source_cfg.get("device"))
-        target_device = devices.get(target_cfg.get("device"))
+        source_device = devices.get(source_topo_id)
+        target_device = devices.get(target_topo_id)
         if source_device and target_device:
             if source_device.status == DeviceStatus.DOWN or target_device.status == DeviceStatus.DOWN:
                 conn_status = ConnectionStatus.DOWN
@@ -308,17 +331,17 @@ async def get_aggregated_topology() -> Topology:
             conn_status = ConnectionStatus.UNKNOWN
 
         connections.append(Connection(
-            id=conn_config["id"],
+            id=f"link-{source_topo_id}-{target_topo_id}",
             source=ConnectionEndpoint(
-                device=source_cfg.get("device"),
-                port=source_cfg.get("port"),
+                device=source_topo_id,
+                port=local_port,
             ),
             target=ConnectionEndpoint(
-                device=target_cfg.get("device"),
-                port=target_cfg.get("port"),
+                device=target_topo_id,
+                port=link.get("remote_port"),
             ),
-            connection_type=ConnectionType(conn_config.get("type", "trunk")),
-            speed=conn_config.get("speed", 1000),
+            connection_type=ConnectionType.TRUNK,
+            speed=10000,  # Default to 10Gbps for discovered links
             status=conn_status,
             utilization=utilization,
         ))

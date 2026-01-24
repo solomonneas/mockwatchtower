@@ -1,4 +1,4 @@
-export type ConnectionStatus = 'up' | 'down' | 'degraded'
+export type ConnectionStatus = 'up' | 'down' | 'degraded' | 'unknown'
 export type ConnectionType = 'trunk' | 'access' | 'uplink' | 'stack' | 'wan'
 
 export interface ConnectionEndpoint {

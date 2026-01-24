@@ -30,6 +30,7 @@ CACHE_ALERTS = "watchtower:alerts"
 CACHE_HEALTH = "watchtower:health"
 CACHE_PROXMOX = "watchtower:proxmox"
 CACHE_PROXMOX_VMS = "watchtower:proxmox_vms"
+CACHE_LINKS = "watchtower:links"
 CACHE_LAST_POLL = "watchtower:last_poll"
 
 
@@ -82,6 +83,18 @@ class PollingScheduler:
             replace_existing=True,
         )
 
+        # Link/neighbor polling (CDP/LLDP discovery)
+        # Run immediately on startup, then periodically
+        from datetime import datetime as dt
+        self._scheduler.add_job(
+            poll_links,
+            IntervalTrigger(seconds=polling.topology),
+            id="poll_links",
+            name="Poll CDP/LLDP links from LibreNMS",
+            replace_existing=True,
+            next_run_time=dt.now(),  # Run immediately on startup
+        )
+
         # Proxmox polling (if configured)
         settings = get_settings()
         if settings.get_all_proxmox_configs():
@@ -111,6 +124,7 @@ class PollingScheduler:
         await asyncio.gather(
             poll_device_status(),
             poll_alerts(),
+            poll_links(),
             poll_proxmox(),
             return_exceptions=True,
         )
@@ -321,6 +335,57 @@ async def poll_alerts() -> None:
 
     except Exception as e:
         logger.error("Failed to poll alerts: %s", e)
+
+
+async def poll_links() -> None:
+    """
+    Poll CDP/LLDP neighbor links from LibreNMS.
+
+    Caches link data for use in topology connection building.
+    """
+    try:
+        async with LibreNMSClient() as client:
+            links = await client.get_all_links()
+
+            # Collect unique port_ids that need resolution
+            port_ids_to_resolve = set()
+            for link in links:
+                if link.local_port_id:
+                    port_ids_to_resolve.add(link.local_port_id)
+
+            # Fetch port names for the port_ids we need
+            port_names: dict[int, str] = {}
+            for port_id in port_ids_to_resolve:
+                try:
+                    port = await client.get_port(port_id)
+                    if port:
+                        port_names[port_id] = port.ifName or port.ifDescr or f"port-{port_id}"
+                except Exception:
+                    pass  # Skip if port lookup fails
+
+        # Convert to cacheable dicts with resolved port names
+        link_data = []
+        for link in links:
+            local_port_name = None
+            if link.local_port_id:
+                local_port_name = port_names.get(link.local_port_id)
+
+            link_data.append({
+                "id": link.id,
+                "local_device_id": link.local_device_id,
+                "local_port_id": link.local_port_id,
+                "local_port": local_port_name or link.local_port,
+                "remote_device_id": link.remote_device_id,
+                "remote_hostname": link.remote_hostname,
+                "remote_port": link.remote_port,
+                "protocol": link.protocol,
+            })
+
+        await redis_cache.set(CACHE_LINKS, link_data, ttl=600)
+        logger.debug("Polled %d CDP/LLDP links from LibreNMS", len(link_data))
+
+    except Exception as e:
+        logger.error("Failed to poll links: %s", e)
 
 
 async def poll_proxmox() -> None:
