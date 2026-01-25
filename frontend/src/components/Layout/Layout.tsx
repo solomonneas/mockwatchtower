@@ -46,7 +46,7 @@ export default function Layout() {
             href="https://github.com/solomonneas/watchtower"
             target="_blank"
             rel="noopener noreferrer"
-            className="absolute bottom-3 left-3 flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
           >
             <svg
               viewBox="0 0 16 16"
