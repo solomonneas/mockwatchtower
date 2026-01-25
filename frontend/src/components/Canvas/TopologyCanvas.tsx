@@ -23,6 +23,111 @@ import TrafficEdge from './edges/TrafficEdge'
 import PhysicalLinkEdge from './edges/PhysicalLinkEdge'
 import type { Topology, Cluster } from '../../types/topology'
 
+// Sanitize ID for Mermaid (only alphanumeric and dashes allowed)
+function sanitizeMermaidId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9-]/g, '_')
+}
+
+// Generate Mermaid flowchart from topology data
+function generateMermaidDiagram(topology: Topology): string {
+  const lines: string[] = ['flowchart TB']
+
+  // Create subgraphs for each cluster
+  topology.clusters.forEach((cluster) => {
+    const clusterId = sanitizeMermaidId(cluster.id)
+    const clusterName = cluster.name.replace(/"/g, '\\"')
+
+    lines.push(`    subgraph ${clusterId}["${clusterName}"]`)
+
+    // Add devices in this cluster
+    cluster.device_ids.forEach((deviceId) => {
+      const device = topology.devices[deviceId]
+      if (device) {
+        const safeId = sanitizeMermaidId(deviceId)
+        const displayName = (device.display_name || deviceId).replace(/"/g, '\\"')
+        // Use different shapes based on device type
+        const shape = device.device_type === 'switch' ? `{{"${displayName}"}}`
+                    : device.device_type === 'firewall' ? `[/"${displayName}"\\]`
+                    : `["${displayName}"]`
+        lines.push(`        ${safeId}${shape}`)
+      }
+    })
+
+    lines.push('    end')
+    lines.push('')
+  })
+
+  // Add external endpoints
+  const externalNodes = new Set<string>()
+  topology.external_links.forEach((link) => {
+    if (link.target.label) {
+      const safeId = sanitizeMermaidId(`ext_${link.target.label}`)
+      if (!externalNodes.has(safeId)) {
+        externalNodes.add(safeId)
+        const label = link.target.label.replace(/"/g, '\\"')
+        lines.push(`    ${safeId}(("${label}"))`)
+      }
+    }
+  })
+
+  if (externalNodes.size > 0) lines.push('')
+
+  // Add connections
+  const addedConnections = new Set<string>()
+
+  topology.connections.forEach((conn) => {
+    const sourceId = conn.source.device
+    const targetId = conn.target.device
+
+    if (sourceId && targetId) {
+      const safeSource = sanitizeMermaidId(sourceId)
+      const safeTarget = sanitizeMermaidId(targetId)
+      const connKey = [safeSource, safeTarget].sort().join('--')
+
+      if (!addedConnections.has(connKey)) {
+        addedConnections.add(connKey)
+
+        // Add port labels if available
+        const sourcePort = conn.source.port ? ` ${conn.source.port}` : ''
+        const targetPort = conn.target.port ? ` ${conn.target.port}` : ''
+
+        if (sourcePort || targetPort) {
+          lines.push(`    ${safeSource} ---|"${sourcePort.trim()} ↔ ${targetPort.trim()}"| ${safeTarget}`)
+        } else {
+          lines.push(`    ${safeSource} --- ${safeTarget}`)
+        }
+      }
+    }
+  })
+
+  // Add external link connections
+  topology.external_links.forEach((link) => {
+    const sourceDevice = link.source.device
+    const targetLabel = link.target.label
+
+    if (sourceDevice && targetLabel) {
+      const safeSource = sanitizeMermaidId(sourceDevice)
+      const safeTarget = sanitizeMermaidId(`ext_${targetLabel}`)
+      lines.push(`    ${safeSource} -.-> ${safeTarget}`)
+    }
+  })
+
+  return lines.join('\n')
+}
+
+// Trigger file download in browser
+function downloadFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/plain' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 const nodeTypes = {
   cluster: ClusterNode,
   device: DeviceNode,
@@ -633,6 +738,14 @@ function TopologyCanvasInner() {
     setResetCounter((c) => c + 1)
   }, [])
 
+  // Export topology as Mermaid diagram
+  const handleExportMermaid = useCallback(() => {
+    if (!topology) return
+    const mermaidContent = generateMermaidDiagram(topology)
+    const timestamp = new Date().toISOString().slice(0, 10)
+    downloadFile(mermaidContent, `topology-${timestamp}.mmd`)
+  }, [topology])
+
   // Update nodes when topology or expanded state changes
   useEffect(() => {
     if (topology) {
@@ -720,6 +833,13 @@ function TopologyCanvasInner() {
         showInteractive={false}
       />
       <Panel position="top-right" className="flex gap-2">
+        <button
+          onClick={handleExportMermaid}
+          className="px-3 py-1.5 text-xs bg-bg-secondary border border-border-default rounded-md hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
+          title="Export topology as Mermaid diagram"
+        >
+          Export Mermaid
+        </button>
         <button
           onClick={handleResetLayout}
           className="px-3 py-1.5 text-xs bg-bg-secondary border border-border-default rounded-md hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
