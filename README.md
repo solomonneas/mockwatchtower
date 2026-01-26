@@ -7,11 +7,14 @@ Self-hosted Network Operations Center dashboard providing real-time visualizatio
 ## Features
 
 - **Interactive Topology Canvas** - Draggable network nodes with automatic position persistence
+- **L2/L3 View Modes** - Toggle between physical topology and logical VLAN groupings
 - **Real-time Monitoring** - WebSocket-based live updates for device status, alerts, and metrics
 - **LibreNMS Integration** - Device status, health metrics, interface statistics, CDP/LLDP discovery
-- **Proxmox Integration** - VM/container monitoring with CPU and memory stats
+- **Proxmox Integration** - Homarr-style panel with VMs, LXCs, and storage per node
 - **Auto-Discovery** - Automatic topology building from CDP/LLDP neighbor data
-- **Speedtest Widget** - Scheduled internet speed testing with CSV logging
+- **Cisco Port Grid** - Physical switch port visualization matching hardware layout
+- **Speedtest Widget** - Scheduled speed testing with CSV logging and link health coloring
+- **Mermaid Diagrams** - Export topology as Mermaid diagrams with pan/zoom viewer
 - **Alert Management** - Real-time alerts with severity levels and toast notifications
 
 ## Quick Start
@@ -58,19 +61,24 @@ cp config/config.example.yaml config/config.yaml
 cp config/topology.example.yaml config/topology.yaml
 ```
 
-- `config/config.yaml` - Credentials for LibreNMS, Proxmox, notifications
+- `config/config.yaml` - Credentials for LibreNMS, Proxmox, speedtest settings
 - `config/topology.yaml` - Network topology definitions (or use auto-discovery)
+
+See [docs/topology-setup.md](docs/topology-setup.md) for detailed topology configuration.
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | /health | Health check |
-| GET | /api/topology | Full topology with live data |
+| GET | /api/topology | Full topology with live data (L2) |
+| GET | /api/topology/l3 | L3 topology grouped by VLAN |
 | GET | /api/devices | All devices with status |
 | GET | /api/device/{id} | Single device details |
 | GET | /api/alerts | Active alerts |
 | GET | /api/vms | Proxmox VMs with metrics |
+| GET | /api/vms/summary | VM summary stats only |
+| GET | /api/vms/node/{name} | Proxmox node detail (VMs, LXCs, storage) |
 | GET | /api/speedtest | Latest speedtest result |
 | POST | /api/speedtest/trigger | Run manual speedtest |
 | GET | /api/speedtest/export | Download speedtest CSV |
@@ -90,6 +98,7 @@ cp config/topology.example.yaml config/topology.yaml
 | Proxmox | 60s | Node and VM stats |
 | Alerts | 30s | Active alert status |
 | CDP/LLDP Links | 5min | Neighbor discovery |
+| VLANs | 5min | VLAN membership for L3 view |
 | Speedtest | 15min | Internet speed (if enabled) |
 
 ## WebSocket Events
@@ -105,11 +114,14 @@ cp config/topology.example.yaml config/topology.yaml
 
 **Phases 1-6 Complete:**
 - Core dashboard with interactive topology canvas
-- LibreNMS integration (devices, health, interfaces, alerts)
-- Proxmox VM monitoring
+- L2 (physical) and L3 (VLAN) topology views
+- LibreNMS integration (devices, health, interfaces, alerts, VLANs)
+- Proxmox integration with Homarr-style panel
 - Real-time WebSocket updates
 - CDP/LLDP auto-discovery
-- Speedtest widget with CSV logging
+- Cisco port grid visualization
+- Speedtest widget with link health coloring
+- Mermaid diagram export with pan/zoom viewer
 
 **Upcoming:**
 - Phase 7: Authentication (JWT login, protected routes)
