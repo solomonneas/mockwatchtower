@@ -3,11 +3,14 @@ import type { Topology } from '../types/topology'
 import type { Device } from '../types/device'
 import type { Connection } from '../types/connection'
 
+type SpeedtestStatus = 'normal' | 'degraded' | 'down' | null
+
 interface NocState {
   // Data
   topology: Topology | null
   selectedDevice: Device | null
   selectedConnection: Connection | null
+  speedtestStatus: SpeedtestStatus
 
   // UI state
   isLoading: boolean
@@ -28,6 +31,7 @@ interface NocState {
   setSidebarOpen: (open: boolean) => void
   toggleClusterExpanded: (clusterId: string) => void
   clearSelection: () => void
+  setSpeedtestStatus: (status: SpeedtestStatus) => void
 }
 
 export const useNocStore = create<NocState>((set, get) => ({
@@ -35,6 +39,7 @@ export const useNocStore = create<NocState>((set, get) => ({
   topology: null,
   selectedDevice: null,
   selectedConnection: null,
+  speedtestStatus: null,
   isLoading: true,
   error: null,
   isConnected: false,
@@ -137,4 +142,6 @@ export const useNocStore = create<NocState>((set, get) => ({
   },
 
   clearSelection: () => set({ selectedDevice: null, selectedConnection: null }),
+
+  setSpeedtestStatus: (speedtestStatus) => set({ speedtestStatus }),
 }))

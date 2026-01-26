@@ -77,6 +77,7 @@ export function useWebSocket() {
   const setConnected = useNocStore((state) => state.setConnected)
   const updateDeviceStatus = useNocStore((state) => state.updateDeviceStatus)
   const updateAlertCount = useNocStore((state) => state.updateAlertCount)
+  const setSpeedtestStatus = useNocStore((state) => state.setSpeedtestStatus)
   const addAlert = useAlertStore((state) => state.addAlert)
   const removeAlert = useAlertStore((state) => state.removeAlert)
 
@@ -154,6 +155,12 @@ export function useWebSocket() {
           break
 
         case 'speedtest_result': {
+          // Update store with speedtest status for external link coloring
+          const result = message.result as { indicator?: 'normal' | 'degraded' | 'down' }
+          if (result?.indicator) {
+            setSpeedtestStatus(result.indicator)
+          }
+
           // Dispatch custom event for SpeedtestWidget
           const speedtestEvent = new CustomEvent('speedtest-update', {
             detail: message.result,
@@ -166,7 +173,7 @@ export function useWebSocket() {
           console.log('Unknown message type:', message.type, message)
       }
     },
-    [updateDeviceStatus, updateAlertCount, addAlert, removeAlert]
+    [updateDeviceStatus, updateAlertCount, setSpeedtestStatus, addAlert, removeAlert]
   )
 
   const connect = useCallback(() => {

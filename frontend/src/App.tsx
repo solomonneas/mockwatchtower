@@ -12,6 +12,8 @@ import { fetchTopology } from './api/endpoints'
 //   window.watchtower.setDeviceDown('s0-1305')
 //   window.watchtower.setDeviceUp('s0-1305')
 //   window.watchtower.listDevices()
+//   window.watchtower.setSpeedtestDown()    // Turn external links red
+//   window.watchtower.setSpeedtestNormal()  // Turn external links green
 if (typeof window !== 'undefined') {
   (window as unknown as { watchtower: unknown }).watchtower = {
     setDeviceDown: (deviceId: string) => {
@@ -31,6 +33,18 @@ if (typeof window !== 'undefined') {
       }
     },
     getStore: () => useNocStore.getState(),
+    setSpeedtestDown: () => {
+      useNocStore.getState().setSpeedtestStatus('down')
+      console.log('Speedtest status: DOWN (external links now red)')
+    },
+    setSpeedtestDegraded: () => {
+      useNocStore.getState().setSpeedtestStatus('degraded')
+      console.log('Speedtest status: DEGRADED (external links now yellow)')
+    },
+    setSpeedtestNormal: () => {
+      useNocStore.getState().setSpeedtestStatus('normal')
+      console.log('Speedtest status: NORMAL (external links now green)')
+    },
   }
 }
 
@@ -38,6 +52,7 @@ function App() {
   const setTopology = useNocStore((state) => state.setTopology)
   const setLoading = useNocStore((state) => state.setLoading)
   const setError = useNocStore((state) => state.setError)
+  const setSpeedtestStatus = useNocStore((state) => state.setSpeedtestStatus)
 
   // Connect to WebSocket for real-time updates
   useWebSocket()
@@ -61,6 +76,22 @@ function App() {
     const interval = setInterval(loadTopology, 60000)
     return () => clearInterval(interval)
   }, [setTopology, setLoading, setError])
+
+  // Fetch initial speedtest status for external link coloring
+  useEffect(() => {
+    async function loadSpeedtest() {
+      try {
+        const response = await fetch('/api/speedtest')
+        const data = await response.json()
+        if (data.indicator) {
+          setSpeedtestStatus(data.indicator)
+        }
+      } catch {
+        // Ignore - speedtest data is optional
+      }
+    }
+    loadSpeedtest()
+  }, [setSpeedtestStatus])
 
   return (
     <ReactFlowProvider>

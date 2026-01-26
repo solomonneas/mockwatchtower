@@ -538,7 +538,8 @@ function topologyToNodes(
 
 function topologyToEdges(
   topology: Topology,
-  expandedClusters: Set<string>
+  expandedClusters: Set<string>,
+  speedtestStatus: 'normal' | 'degraded' | 'down' | null = null
 ): Edge[] {
   const edges: Edge[] = []
   const addedEdges = new Set<string>()
@@ -664,6 +665,7 @@ function topologyToEdges(
           status: externalLinkStatus,
           connectionType: 'wan',
           description: link.description,
+          speedtestStatus,
         },
       })
     }
@@ -677,6 +679,7 @@ function TopologyCanvasInner() {
   const expandedClusters = useNocStore((state) => state.expandedClusters)
   const selectDevice = useNocStore((state) => state.selectDevice)
   const toggleClusterExpanded = useNocStore((state) => state.toggleClusterExpanded)
+  const speedtestStatus = useNocStore((state) => state.speedtestStatus)
   const { fitView } = useReactFlow()
 
   const [resetCounter, setResetCounter] = useState(0)
@@ -705,8 +708,8 @@ function TopologyCanvasInner() {
   }, [topology, expandedClusters, resetCounter])
 
   const initialEdges = useMemo(
-    () => (topology ? topologyToEdges(topology, expandedClusters) : []),
-    [topology, expandedClusters]
+    () => (topology ? topologyToEdges(topology, expandedClusters, speedtestStatus) : []),
+    [topology, expandedClusters, speedtestStatus]
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(processedNodes)
@@ -774,9 +777,9 @@ function TopologyCanvasInner() {
 
       prevExpandedRef.current = new Set(expandedClusters)
       setNodes(newNodes)
-      setEdges(topologyToEdges(topology, expandedClusters))
+      setEdges(topologyToEdges(topology, expandedClusters, speedtestStatus))
     }
-  }, [topology, expandedClusters, setNodes, setEdges, resetCounter, fitView])
+  }, [topology, expandedClusters, speedtestStatus, setNodes, setEdges, resetCounter, fitView])
 
   // Single click: select device for sidebar details
   const onNodeClick = useCallback(

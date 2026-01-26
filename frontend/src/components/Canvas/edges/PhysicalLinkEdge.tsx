@@ -9,6 +9,7 @@ interface PhysicalLinkEdgeData {
   status: string
   connectionType?: string
   description?: string
+  speedtestStatus?: 'normal' | 'degraded' | 'down' | null
 }
 
 interface PhysicalLinkEdgeProps {
@@ -23,7 +24,12 @@ interface PhysicalLinkEdgeProps {
   selected?: boolean
 }
 
-function getEdgeColor(utilization: number, status: string): string {
+function getEdgeColor(
+  utilization: number,
+  status: string,
+  isWanLink: boolean = false,
+  speedtestStatus?: 'normal' | 'degraded' | 'down' | null
+): string {
   if (status === 'down') return '#f85149'
   if (status === 'degraded') return '#d29922'
   if (status === 'unknown') return '#6e7681'
@@ -31,6 +37,13 @@ function getEdgeColor(utilization: number, status: string): string {
   // High utilization warnings
   if (utilization >= 85) return '#f85149'  // Red - critical
   if (utilization >= 60) return '#d29922'  // Yellow - warning
+
+  // WAN links (external) use speedtest status for coloring
+  if (isWanLink && speedtestStatus) {
+    if (speedtestStatus === 'down') return '#f85149'      // Red for failed
+    if (speedtestStatus === 'degraded') return '#d29922'  // Yellow for degraded
+    return '#3fb950'  // Green for normal
+  }
 
   // Active links get bright blue
   return '#58a6ff'
@@ -73,6 +86,8 @@ function PhysicalLinkEdge({
   const sourcePort = data?.sourcePort
   const targetPort = data?.targetPort
   const connectionType = data?.connectionType
+  const speedtestStatus = data?.speedtestStatus
+  const isWanLink = connectionType === 'wan'
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -83,7 +98,7 @@ function PhysicalLinkEdge({
     targetPosition,
   })
 
-  const strokeColor = getEdgeColor(utilization, status)
+  const strokeColor = getEdgeColor(utilization, status, isWanLink, speedtestStatus)
   const strokeWidth = getEdgeWidth(speed, utilization)
 
   // Calculate port label positions (near the connection points)
