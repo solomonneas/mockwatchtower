@@ -1103,6 +1103,10 @@ function TopologyCanvasInner() {
                 <div className="w-5 h-0.5 bg-[#f85149] rounded" />
                 <span className="text-text-secondary">Down / Critical</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-0.5 bg-[#6b7280] rounded" />
+                <span className="text-text-secondary">Dumb Switch (No SNMP)</span>
+              </div>
             </div>
           </div>
         )}
