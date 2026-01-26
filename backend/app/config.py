@@ -47,6 +47,21 @@ class ProxmoxConfig(BaseModel):
     additional: list[ProxmoxInstanceConfig] = []
 
 
+class PaloAltoFirewallConfig(BaseModel):
+    """Configuration for a single Palo Alto firewall."""
+    name: str = ""
+    host: str = ""
+    api_key: str = ""
+    verify_ssl: bool = False
+    model: str = ""  # e.g., "PA-3410"
+
+
+class PaloAltoConfig(BaseModel):
+    """Palo Alto firewall configuration."""
+    enabled: bool = False
+    firewalls: list[PaloAltoFirewallConfig] = []
+
+
 class DataSourcesConfig(BaseModel):
     librenms: LibreNMSConfig = LibreNMSConfig()
     netdisco: NetdiscoConfig = NetdiscoConfig()
@@ -137,6 +152,22 @@ class SpeedtestConfig(BaseModel):
     logging: SpeedtestLogging = SpeedtestLogging()
 
 
+class PortGroupThresholds(BaseModel):
+    """Thresholds for port group traffic indicators."""
+
+    warning_mbps: int = 500  # Yellow if above this
+    critical_mbps: int = 800  # Red if above this
+
+
+class PortGroupConfig(BaseModel):
+    """Configuration for a port group to monitor aggregate traffic."""
+
+    name: str
+    description: str = ""
+    match_alias: str  # Pattern to match in ifAlias (case-insensitive)
+    thresholds: PortGroupThresholds = PortGroupThresholds()
+
+
 class AppConfig(BaseModel):
     auth: AuthConfig = AuthConfig()
     data_sources: DataSourcesConfig = DataSourcesConfig()
@@ -145,6 +176,8 @@ class AppConfig(BaseModel):
     alert_thresholds: AlertThresholdsConfig = AlertThresholdsConfig()
     discovery: DiscoveryConfig = DiscoveryConfig()
     speedtest: SpeedtestConfig = SpeedtestConfig()
+    palo_alto: PaloAltoConfig = PaloAltoConfig()
+    port_groups: list[PortGroupConfig] = []
 
 
 class Settings(BaseSettings):
@@ -266,6 +299,17 @@ class IntegrationSettings:
                 configs.append((instance.name, instance))
 
         return configs
+
+    def get_palo_alto_configs(self) -> list[PaloAltoFirewallConfig]:
+        """
+        Get all Palo Alto firewall configurations.
+
+        Returns a list of firewall configs if enabled.
+        """
+        palo_alto = self._config.palo_alto
+        if not palo_alto.enabled:
+            return []
+        return [fw for fw in palo_alto.firewalls if fw.host and fw.api_key]
 
 
 def get_settings() -> IntegrationSettings:
