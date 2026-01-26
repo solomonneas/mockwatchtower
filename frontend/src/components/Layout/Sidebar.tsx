@@ -6,6 +6,7 @@ import NetworkSummary from '../Sidebar/NetworkSummary'
 import PhysicalLinksPanel from '../Sidebar/PhysicalLinksPanel'
 import SpeedtestWidget from '../Sidebar/SpeedtestWidget'
 import PortGroupWidget from '../Sidebar/PortGroupWidget'
+import PortSearchWidget from '../Sidebar/PortSearchWidget'
 
 type SidebarTab = 'overview' | 'links'
 
@@ -64,6 +65,7 @@ export default function Sidebar() {
           <div className="h-full overflow-y-auto">
             <SpeedtestWidget />
             <PortGroupWidget />
+            <PortSearchWidget />
             <NetworkSummary />
             <div className="p-3 border-t border-border-primary">
               <div className="text-xs text-text-tertiary text-center">

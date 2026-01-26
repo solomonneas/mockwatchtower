@@ -15,6 +15,7 @@ from .routers.vms import router as vms_router
 from .routers.speedtest import router as speedtest_router
 from .routers.paloalto import router as paloalto_router
 from .routers.portgroups import router as portgroups_router
+from .routers.ports import router as ports_router
 from .websocket import websocket_endpoint, ws_manager
 
 
@@ -63,6 +64,7 @@ app.include_router(vms_router, prefix="/api", tags=["vms"])
 app.include_router(speedtest_router, prefix="/api", tags=["speedtest"])
 app.include_router(paloalto_router, prefix="/api", tags=["paloalto"])
 app.include_router(portgroups_router, prefix="/api", tags=["port-groups"])
+app.include_router(ports_router, prefix="/api", tags=["ports"])
 
 
 @app.get("/health")
