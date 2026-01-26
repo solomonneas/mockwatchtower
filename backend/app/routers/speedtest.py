@@ -137,8 +137,9 @@ async def export_csv() -> FileResponse:
             detail="No speedtest history available yet",
         )
 
+    today = datetime.utcnow().strftime("%Y-%m-%d")
     return FileResponse(
         path=csv_path,
-        filename="speedtest_history.csv",
+        filename=f"speedtest_history_{today}.csv",
         media_type="text/csv",
     )
