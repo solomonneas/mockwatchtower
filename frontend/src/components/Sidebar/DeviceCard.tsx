@@ -2,6 +2,7 @@ import type { Device } from '../../types/device'
 import StatusDot from '../common/StatusDot'
 import UtilizationBar from '../common/UtilizationBar'
 import { PortGrid } from './PortGrid'
+import ProxmoxPanel from './ProxmoxPanel'
 import { useNocStore } from '../../store/nocStore'
 
 interface DeviceCardProps {
@@ -151,26 +152,10 @@ export default function DeviceCard({ device }: DeviceCardProps) {
         </div>
       )}
 
+      {/* Proxmox Panel - Homarr style */}
       {device.proxmox_stats && (
         <div className="space-y-3 mb-4 pb-4 border-b border-border-default">
-          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
-            Proxmox Info
-          </h3>
-          <div className="flex justify-between text-sm">
-            <span className="text-text-secondary">VMs</span>
-            <span>
-              {device.proxmox_stats.vms_running} running / {device.proxmox_stats.vms_stopped} stopped
-            </span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-text-secondary">Containers</span>
-            <span>
-              {device.proxmox_stats.containers_running} running / {device.proxmox_stats.containers_stopped} stopped
-            </span>
-          </div>
-          {device.proxmox_stats.ceph_used_percent !== undefined && (
-            <UtilizationBar label="Ceph" value={device.proxmox_stats.ceph_used_percent} />
-          )}
+          <ProxmoxPanel nodeName={device.display_name} />
         </div>
       )}
 

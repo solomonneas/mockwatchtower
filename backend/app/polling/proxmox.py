@@ -209,6 +209,31 @@ class ProxmoxClient:
         return vms
 
     # ─────────────────────────────────────────────────────────────
+    # Storage endpoints
+    # ─────────────────────────────────────────────────────────────
+
+    async def get_node_storage(self, node: str) -> list[dict]:
+        """Get storage for a specific node"""
+        try:
+            data = await self._get(f"/nodes/{node}/storage")
+            storage_list = []
+            for s in data.get("data", []):
+                storage_list.append({
+                    "storage": s.get("storage"),
+                    "type": s.get("type"),
+                    "content": s.get("content"),
+                    "used": s.get("used", 0),
+                    "total": s.get("total", 0),
+                    "avail": s.get("avail", 0),
+                    "active": s.get("active", 1),
+                    "enabled": s.get("enabled", 1),
+                    "shared": s.get("shared", 0),
+                })
+            return storage_list
+        except httpx.HTTPStatusError:
+            return []
+
+    # ─────────────────────────────────────────────────────────────
     # Health check
     # ─────────────────────────────────────────────────────────────
 

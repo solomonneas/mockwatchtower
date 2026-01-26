@@ -16,8 +16,8 @@ from app.config import get_topology_config
 from app.models.device import Device, DeviceStatus, DeviceType, DeviceStats
 from app.models.topology import Topology, Cluster, Position
 from app.models.connection import Connection, ExternalLink, ConnectionEndpoint, ExternalTarget, ConnectionType, ConnectionStatus
-from app.models.device import Interface
-from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH, CACHE_LINKS, CACHE_PROXMOX
+from app.models.device import Interface, ProxmoxStats
+from app.polling.scheduler import CACHE_DEVICES, CACHE_ALERTS, CACHE_HEALTH, CACHE_LINKS, CACHE_PROXMOX, CACHE_PROXMOX_VMS
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,60 @@ def match_proxmox_node(
     return None
 
 
+def match_proxmox_node_by_name(
+    device_id: str,
+    device_config: dict[str, Any],
+    proxmox_nodes: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Match a topology device to a Proxmox node by device_id or display_name.
+
+    This is used to determine if a device is a Proxmox host and should show
+    the ProxmoxPanel with VMs, LXCs, and storage.
+
+    Matching strategies (in order):
+    1. Exact match on device_id == node name
+    2. Normalized match (remove spaces, dashes, underscores, lowercase)
+    3. Partial match on node name only (not instance - too generic like "primary")
+    """
+    display_name = device_config.get("display_name", device_id)
+
+    # Normalize for fuzzy matching
+    def normalize(s: str) -> str:
+        return s.lower().replace(" ", "").replace("-", "").replace("_", "")
+
+    device_id_norm = normalize(device_id)
+    display_name_norm = normalize(display_name)
+
+    for key, data in proxmox_nodes.items():
+        node_name = data.get("node", "")
+        node_norm = normalize(node_name)
+
+        # Skip empty node names
+        if not node_norm:
+            continue
+
+        # Strategy 1: Exact match on device_id or display_name
+        if device_id == node_name or display_name == node_name:
+            return data
+
+        # Strategy 2: Normalized exact match
+        if device_id_norm == node_norm or display_name_norm == node_norm:
+            return data
+
+        # Strategy 3: Partial match - node name must be in device_id/display_name
+        # Only match if node_name is reasonably specific (at least 4 chars)
+        # and matches at word boundary-ish positions
+        if len(node_norm) >= 4:
+            # Check if node name appears as a significant part of device_id/display_name
+            if device_id_norm.startswith(node_norm) or device_id_norm.endswith(node_norm):
+                return data
+            if display_name_norm.startswith(node_norm) or display_name_norm.endswith(node_norm):
+                return data
+
+    return None
+
+
 def cluster_type_to_device_type(cluster_type: str) -> DeviceType:
     """Convert cluster type to device type."""
     mapping = {
@@ -165,8 +219,9 @@ async def get_aggregated_topology() -> Topology:
     librenms_alerts = await redis_cache.get_json(CACHE_ALERTS) or []
     health_data = await redis_cache.get_json(CACHE_HEALTH) or {}
 
-    # Load cached Proxmox data (fallback for Linux hosts)
+    # Load cached Proxmox data (fallback for Linux hosts and for proxmox_stats)
     proxmox_nodes = await redis_cache.get_json(CACHE_PROXMOX) or {}
+    proxmox_vms = await redis_cache.get_json(CACHE_PROXMOX_VMS) or []
 
     # Build lookup indexes
     by_ip, by_hostname = build_librenms_indexes(librenms_devices)
@@ -232,6 +287,45 @@ async def get_aggregated_topology() -> Topology:
 
         # Build device
         cluster_type = device_cluster_type.get(device_id, "other")
+
+        # Check if this device is a Proxmox node - compute proxmox_stats
+        proxmox_stats = None
+        if proxmox_nodes:
+            proxmox_match = match_proxmox_node_by_name(device_id, config, proxmox_nodes)
+            if proxmox_match:
+                # Count VMs and containers for this node
+                node_name = proxmox_match.get("node", "")
+                instance_name = proxmox_match.get("instance", "")
+
+                vms_running = 0
+                vms_stopped = 0
+                containers_running = 0
+                containers_stopped = 0
+
+                for vm in proxmox_vms:
+                    vm_node = vm.get("node", "")
+                    vm_instance = vm.get("instance", "")
+
+                    # Match by node name AND instance (both must match for cluster nodes)
+                    if vm_node == node_name and vm_instance == instance_name:
+                        if vm.get("type") == "lxc":
+                            if vm.get("status") == "running":
+                                containers_running += 1
+                            else:
+                                containers_stopped += 1
+                        else:  # qemu
+                            if vm.get("status") == "running":
+                                vms_running += 1
+                            else:
+                                vms_stopped += 1
+
+                proxmox_stats = ProxmoxStats(
+                    vms_running=vms_running,
+                    vms_stopped=vms_stopped,
+                    containers_running=containers_running,
+                    containers_stopped=containers_stopped,
+                )
+
         devices[device_id] = Device(
             id=device_id,
             display_name=config.get("display_name", device_id),
@@ -243,6 +337,7 @@ async def get_aggregated_topology() -> Topology:
             cluster_id=device_cluster_id.get(device_id),
             stats=DeviceStats(uptime=uptime or 0, cpu=cpu, memory=memory),
             interfaces=interfaces,
+            proxmox_stats=proxmox_stats,
             alert_count=alert_count,
             last_seen=datetime.fromisoformat(last_polled) if last_polled else None,
         )
