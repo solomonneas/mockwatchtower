@@ -129,7 +129,7 @@ class DiscoveryConfig(BaseModel):
 class SpeedtestThresholds(BaseModel):
     """Thresholds for speedtest status indicators."""
 
-    degraded_download_mbps: int = 100  # Yellow if below this
+    degraded_download_mbps: int = 200  # Yellow if below this
     degraded_ping_ms: int = 50  # Yellow if above this
     down_download_mbps: int = 10  # Red if below this
 
