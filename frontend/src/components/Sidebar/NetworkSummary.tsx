@@ -8,7 +8,6 @@ export default function NetworkSummary() {
   const [summaryExpanded, setSummaryExpanded] = useState(true)
   const [clustersExpanded, setClustersExpanded] = useState(true)
   const [byTypeExpanded, setByTypeExpanded] = useState(false)
-  const [externalExpanded, setExternalExpanded] = useState(false)
 
   if (!topology) {
     return (
@@ -43,9 +42,6 @@ export default function NetworkSummary() {
 
   // Check if any types have down devices
   const typesWithIssues = Object.values(devicesByType).filter((t) => t.down > 0).length
-
-  // Check if any external links are down
-  const externalLinksDown = topology.external_links.filter((l) => l.status !== 'up').length
 
   return (
     <div className="p-4">
@@ -178,45 +174,6 @@ export default function NetworkSummary() {
           </div>
         )}
       </div>
-
-      {/* External Links - Collapsible */}
-      {topology.external_links.length > 0 && (
-        <div className="mb-4">
-          <div
-            className="flex items-center justify-between cursor-pointer py-2"
-            onClick={() => setExternalExpanded(!externalExpanded)}
-          >
-            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide">
-              External Links ({topology.external_links.length})
-            </h3>
-            <div className="flex items-center gap-2">
-              {externalLinksDown > 0 && (
-                <span className="text-xs text-status-red">{externalLinksDown} down</span>
-              )}
-              <ChevronIcon expanded={externalExpanded} />
-            </div>
-          </div>
-
-          {externalExpanded && (
-            <div className="space-y-2 mt-1">
-              {topology.external_links.map((link) => (
-                <div
-                  key={link.id}
-                  className="flex items-center justify-between text-sm py-2 px-3 bg-bg-tertiary rounded-lg"
-                >
-                  <span className="text-text-secondary">{link.target.label}</span>
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={link.status === 'up' ? 'up' : 'down'} />
-                    <span className="text-text-muted">
-                      {link.utilization.toFixed(0)}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Virtual Machines (Proxmox) */}
       <VMList />
