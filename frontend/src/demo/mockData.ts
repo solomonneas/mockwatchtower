@@ -454,77 +454,24 @@ export interface PortGroupStats {
   }
 }
 
-// Calculate aggregated traffic from switch interfaces
-function calculatePortGroupStats(
-  name: string,
-  description: string,
-  interfaces: Interface[],
-  portPattern: RegExp,
-  warningMbps: number,
-  criticalMbps: number
-): PortGroupStats {
-  const matchingPorts = interfaces.filter(i => portPattern.test(i.name))
-  const activePorts = matchingPorts.filter(i => i.status === 'up' && i.in_bps > 0)
-
-  const inBps = activePorts.reduce((sum, p) => sum + p.in_bps, 0)
-  const outBps = activePorts.reduce((sum, p) => sum + p.out_bps, 0)
-  const inMbps = inBps / 1_000_000
-  const outMbps = outBps / 1_000_000
-  const totalMbps = inMbps + outMbps
-
-  let status: 'ok' | 'warning' | 'critical' = 'ok'
-  if (totalMbps >= criticalMbps) status = 'critical'
-  else if (totalMbps >= warningMbps) status = 'warning'
-
-  return {
-    name,
-    description,
-    port_count: matchingPorts.length,
-    active_port_count: activePorts.length,
-    in_bps: inBps,
-    out_bps: outBps,
-    in_mbps: Math.round(inMbps * 10) / 10,
-    out_mbps: Math.round(outMbps * 10) / 10,
-    total_mbps: Math.round(totalMbps * 10) / 10,
-    status,
-    thresholds: {
-      warning_mbps: warningMbps,
-      critical_mbps: criticalMbps,
-    },
-  }
-}
-
-// Combine both switch stacks for aggregate calculations
-const allSwitchInterfaces = [...coreSw1Interfaces, ...coreSw2Interfaces]
-
+// Single port group for Digital Media Labs
 export const mockPortGroups: PortGroupStats[] = [
-  // Server uplinks (10G ports connected to hypervisors and servers)
-  calculatePortGroupStats(
-    'Server Uplinks',
-    'Aggregated 10G uplinks to hypervisors and server infrastructure',
-    allSwitchInterfaces,
-    /^Te[1-4]\/0\/(45|46|47|48)$/, // 10G uplink ports
-    15000, // 15 Gbps warning
-    35000  // 35 Gbps critical
-  ),
-  // User access ports (1G ports on slots 1-2)
-  calculatePortGroupStats(
-    'User Access',
-    'End-user workstation and VoIP phone connections',
-    allSwitchInterfaces,
-    /^Gi[1-2]\/0\/[0-9]+$/, // Slots 1-2 GigE ports
-    8000,  // 8 Gbps warning
-    15000  // 15 Gbps critical
-  ),
-  // IoT and building systems (1G ports on slots 3-4)
-  calculatePortGroupStats(
-    'IoT & Building',
-    'Access points, cameras, badge readers, and building automation',
-    allSwitchInterfaces,
-    /^Gi[3-4]\/0\/[0-9]+$/, // Slots 3-4 GigE ports
-    5000,  // 5 Gbps warning
-    10000  // 10 Gbps critical
-  ),
+  {
+    name: 'Digital Media Labs',
+    description: 'Digital Media Mac Pro Lab',
+    port_count: 140,
+    active_port_count: 87,
+    in_bps: 360000000,
+    out_bps: 96000000,
+    in_mbps: 360.0,
+    out_mbps: 96.0,
+    total_mbps: 456.0,
+    status: 'ok',
+    thresholds: {
+      warning_mbps: 500,
+      critical_mbps: 800,
+    },
+  },
 ]
 
 export const mockVMs: VMListResponse = {
