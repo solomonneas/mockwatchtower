@@ -7,6 +7,125 @@ import type { Topology } from '../types/topology'
 import type { AlertSummary } from '../types/alert'
 import type { L3Topology } from '../types/vlan'
 import type { VMListResponse } from '../api/endpoints'
+import type { Interface } from '../types/device'
+
+/**
+ * Generate realistic Cisco Catalyst 9300 stack interfaces
+ * 4 slots x 48 ports = 192 ports total
+ */
+function generateCatalystStackInterfaces(seed: number): Interface[] {
+  const interfaces: Interface[] = []
+
+  // Deterministic "random" based on seed
+  const rand = (i: number) => {
+    const x = Math.sin(seed + i) * 10000
+    return x - Math.floor(x)
+  }
+
+  let portIndex = 0
+  for (let slot = 1; slot <= 4; slot++) {
+    for (let port = 1; port <= 48; port++) {
+      portIndex++
+      const r = rand(portIndex)
+
+      // Port naming: last 4 ports per slot are 10G uplink-capable
+      const is10G = port >= 45
+      const name = is10G
+        ? `Te${slot}/0/${port}`
+        : `Gi${slot}/0/${port}`
+
+      // Determine port state distribution:
+      // 55% up with traffic, 15% up no traffic, 20% admin down, 10% down/error
+      let status: 'up' | 'down' = 'up'
+      let adminStatus: 'up' | 'down' = 'up'
+      let utilization = 0
+      let inBps = 0
+      let outBps = 0
+      let errorsIn = 0
+      let errorsOut = 0
+      let alias = ''
+      let isTrunk = false
+      let poeEnabled = false
+      let poePower = 0
+
+      if (r < 0.55) {
+        // Up with traffic
+        status = 'up'
+        const util = rand(portIndex + 1000) * 45 + 2 // 2-47% utilization
+        utilization = Math.round(util * 10) / 10
+        const speed = is10G ? 10000000000 : 1000000000
+        inBps = Math.round(speed * (util / 100) * (0.3 + rand(portIndex + 2000) * 0.7))
+        outBps = Math.round(speed * (util / 100) * (0.3 + rand(portIndex + 3000) * 0.7))
+
+        // Assign realistic descriptions
+        const descOptions = [
+          'Server-ESXi', 'AP-Floor2', 'Printer-HR', 'Desktop', 'VoIP-Phone',
+          'Camera-Lobby', 'Server-DB', 'Server-Web', 'AP-Conf-Room', 'Workstation',
+          'iDRAC', 'Storage-NAS', 'Server-App', 'Badge-Reader', 'AV-Display'
+        ]
+        alias = descOptions[Math.floor(rand(portIndex + 4000) * descOptions.length)]
+
+        // Some ports are trunks (servers, APs, etc)
+        isTrunk = alias.includes('Server') || alias.includes('AP') || rand(portIndex + 5000) < 0.1
+
+        // PoE for phones, APs, cameras, badge readers
+        if (alias.includes('Phone') || alias.includes('AP') || alias.includes('Camera') || alias.includes('Badge')) {
+          poeEnabled = true
+          poePower = Math.round((5 + rand(portIndex + 6000) * 25) * 10) / 10 // 5-30W
+        }
+      } else if (r < 0.70) {
+        // Up but no/minimal traffic (connected but idle)
+        status = 'up'
+        utilization = Math.round(rand(portIndex + 7000) * 2 * 10) / 10 // 0-2%
+        const speed = is10G ? 10000000000 : 1000000000
+        inBps = Math.round(speed * 0.001 * rand(portIndex + 8000))
+        outBps = Math.round(speed * 0.001 * rand(portIndex + 9000))
+        alias = 'Reserved'
+      } else if (r < 0.90) {
+        // Admin down (unused ports)
+        status = 'down'
+        adminStatus = 'down'
+        alias = ''
+      } else {
+        // Down with errors (problem ports)
+        status = 'down'
+        errorsIn = Math.floor(rand(portIndex + 10000) * 500)
+        errorsOut = Math.floor(rand(portIndex + 11000) * 100)
+        alias = rand(portIndex + 12000) < 0.5 ? 'FAULTY-CABLE' : 'Desktop-Disconnected'
+      }
+
+      interfaces.push({
+        name,
+        status,
+        admin_status: adminStatus,
+        alias: alias || undefined,
+        is_trunk: isTrunk || undefined,
+        poe_enabled: poeEnabled || undefined,
+        poe_power: poePower || undefined,
+        speed: is10G ? 10000 : 1000,
+        in_bps: inBps,
+        out_bps: outBps,
+        utilization,
+        errors_in: errorsIn,
+        errors_out: errorsOut,
+      })
+    }
+  }
+
+  return interfaces
+}
+
+// Generate interfaces for both core switches
+const coreSw1Interfaces = generateCatalystStackInterfaces(42)
+const coreSw2Interfaces = generateCatalystStackInterfaces(137)
+
+// Count ports for switch_stats
+const countPorts = (ifaces: Interface[]) => ({
+  up: ifaces.filter(i => i.status === 'up').length,
+  down: ifaces.filter(i => i.status === 'down').length,
+})
+const sw1Counts = countPorts(coreSw1Interfaces)
+const sw2Counts = countPorts(coreSw2Interfaces)
 
 export const mockTopology: Topology = {
   clusters: [
@@ -50,39 +169,41 @@ export const mockTopology: Topology = {
   devices: {
     'core-sw-1': {
       id: 'core-sw-1',
-      display_name: 'Core Switch 1',
-      model: 'Cisco Catalyst 9300',
+      display_name: 'Core Switch Stack 1',
+      model: 'Cisco Catalyst 9300-48P (4-member stack)',
       ip: '10.10.1.1',
       status: 'up',
       device_type: 'switch',
       cluster_id: 'core',
-      stats: { cpu: 15, memory: 42, uptime: 8640000 },
-      interfaces: [
-        { name: 'Te1/0/1', status: 'up', speed: 10000, in_bps: 450000000, out_bps: 380000000, utilization: 8, errors_in: 0, errors_out: 0 },
-        { name: 'Te1/0/48', status: 'up', speed: 10000, in_bps: 120000000, out_bps: 95000000, utilization: 2, errors_in: 0, errors_out: 0 },
-        { name: 'Gi1/0/1', status: 'up', speed: 1000, in_bps: 25000000, out_bps: 18000000, utilization: 4, errors_in: 0, errors_out: 0 },
-        { name: 'Te1/0/10', status: 'up', speed: 10000, in_bps: 890000000, out_bps: 720000000, utilization: 16, errors_in: 0, errors_out: 0 },
-      ],
-      switch_stats: { ports_up: 24, ports_down: 0, is_stp_root: true },
+      stats: { cpu: 18, memory: 45, uptime: 8640000 },
+      interfaces: coreSw1Interfaces,
+      switch_stats: {
+        ports_up: sw1Counts.up,
+        ports_down: sw1Counts.down,
+        poe_budget_used: 847,
+        poe_budget_total: 1440,
+        is_stp_root: true,
+      },
       alert_count: 0,
     },
     'core-sw-2': {
       id: 'core-sw-2',
-      display_name: 'Core Switch 2',
-      model: 'Cisco Catalyst 9300',
+      display_name: 'Core Switch Stack 2',
+      model: 'Cisco Catalyst 9300-48P (4-member stack)',
       ip: '10.10.1.2',
       status: 'up',
       device_type: 'switch',
       cluster_id: 'core',
-      stats: { cpu: 12, memory: 38, uptime: 8640000 },
-      interfaces: [
-        { name: 'Te1/0/1', status: 'up', speed: 10000, in_bps: 380000000, out_bps: 450000000, utilization: 8, errors_in: 0, errors_out: 0 },
-        { name: 'Gi1/0/1', status: 'down', speed: 1000, in_bps: 0, out_bps: 0, utilization: 0, errors_in: 12, errors_out: 0 },
-        { name: 'Gi1/0/2', status: 'up', speed: 1000, in_bps: 45000000, out_bps: 32000000, utilization: 8, errors_in: 0, errors_out: 0 },
-        { name: 'Te1/0/10', status: 'up', speed: 10000, in_bps: 720000000, out_bps: 650000000, utilization: 14, errors_in: 0, errors_out: 0 },
-      ],
-      switch_stats: { ports_up: 23, ports_down: 1, is_stp_root: false },
-      alert_count: 1,
+      stats: { cpu: 15, memory: 42, uptime: 8640000 },
+      interfaces: coreSw2Interfaces,
+      switch_stats: {
+        ports_up: sw2Counts.up,
+        ports_down: sw2Counts.down,
+        poe_budget_used: 723,
+        poe_budget_total: 1440,
+        is_stp_root: false,
+      },
+      alert_count: sw2Counts.down > 30 ? 1 : 0,
     },
     'fw-edge-1': {
       id: 'fw-edge-1',
