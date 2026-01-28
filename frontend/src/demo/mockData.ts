@@ -578,7 +578,7 @@ export interface ProxmoxNodeDetail {
 }
 
 export const mockProxmoxNodes: Record<string, ProxmoxNodeDetail> = {
-  'hv-prod-1': {
+  'Proxmox Node 1': {
     node: {
       node: 'hv-prod-1',
       status: 'online',
@@ -611,7 +611,7 @@ export const mockProxmoxNodes: Record<string, ProxmoxNodeDetail> = {
     lxcs_running: 3,
     lxcs_total: 3,
   },
-  'hv-prod-2': {
+  'Proxmox Node 2': {
     node: {
       node: 'hv-prod-2',
       status: 'online',
