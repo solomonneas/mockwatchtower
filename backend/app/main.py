@@ -22,13 +22,22 @@ from .websocket import websocket_endpoint, ws_manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - startup and shutdown events."""
+    import asyncio
+
     # Startup
     await redis_cache.connect()
 
-    # Start polling scheduler if LibreNMS is configured
-    config = get_config()
-    if config.data_sources.librenms.url:
-        scheduler.start()
+    if settings.demo_mode:
+        # Demo mode: pre-populate cache with fake data and start simulator
+        from .demo_simulator import initialize_demo_cache, demo_simulator
+        await initialize_demo_cache()
+        asyncio.create_task(demo_simulator())
+        print("[DEMO] Demo mode active - using simulated data")
+    else:
+        # Production mode: start real polling scheduler if LibreNMS is configured
+        config = get_config()
+        if config.data_sources.librenms.url:
+            scheduler.start()
 
     yield
 
@@ -74,6 +83,15 @@ async def health_check():
         "status": "healthy",
         "service": "watchtower",
         "websocket_clients": ws_manager.connection_count,
+    }
+
+
+@app.get("/api/config")
+async def get_app_config():
+    """Get application configuration (for frontend to detect demo mode)."""
+    return {
+        "demo_mode": settings.demo_mode,
+        "dev_mode": settings.dev_mode,
     }
 
 

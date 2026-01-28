@@ -24,6 +24,7 @@ interface NocState {
   isConnected: boolean
   sidebarOpen: boolean
   expandedClusters: Set<string>
+  demoMode: boolean
 
   // Actions
   setTopology: (topology: Topology) => void
@@ -38,6 +39,7 @@ interface NocState {
   toggleClusterExpanded: (clusterId: string) => void
   clearSelection: () => void
   setSpeedtestStatus: (status: SpeedtestStatus) => void
+  setDemoMode: (demoMode: boolean) => void
 
   // L3 actions
   setViewMode: (mode: ViewMode) => void
@@ -63,6 +65,7 @@ export const useNocStore = create<NocState>((set, get) => ({
   isConnected: false,
   sidebarOpen: true,
   expandedClusters: new Set<string>(),
+  demoMode: false,
 
   // Actions
   setTopology: (topology) => set({ topology, error: null }),
@@ -162,6 +165,7 @@ export const useNocStore = create<NocState>((set, get) => ({
   clearSelection: () => set({ selectedDevice: null, selectedConnection: null }),
 
   setSpeedtestStatus: (speedtestStatus) => set({ speedtestStatus }),
+  setDemoMode: (demoMode) => set({ demoMode }),
 
   // L3 actions
   setViewMode: (viewMode) => set({ viewMode }),

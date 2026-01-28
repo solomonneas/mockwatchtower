@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from ..config import settings
 from ..models.device import DeviceStatus
 from ..models.topology import Topology, TopologySummary
 from ..models.vlan import L3Topology
@@ -14,6 +15,9 @@ router = APIRouter()
 @router.get("/topology", response_model=Topology)
 async def get_topology():
     """Get the full network topology with all devices, connections, and stats."""
+    if settings.demo_mode:
+        from ..demo_data import get_demo_topology
+        return get_demo_topology()
     return await get_aggregated_topology()
 
 
@@ -45,4 +49,7 @@ async def get_l3_topology_endpoint():
     Returns VLAN groups with devices, gateway identification,
     and VLAN membership data.
     """
+    if settings.demo_mode:
+        from ..demo_data import get_demo_l3_topology
+        return get_demo_l3_topology()
     return await get_l3_topology()

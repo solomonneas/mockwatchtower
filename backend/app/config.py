@@ -193,6 +193,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379"
     dev_mode: bool = True
+    demo_mode: bool = False  # Run with fake data, no real APIs needed
     config_path: str = "../config/config.yaml"
     topology_path: str = "../config/topology.yaml"
 

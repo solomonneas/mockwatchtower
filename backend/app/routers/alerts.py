@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from ..cache import redis_cache
+from ..config import settings
 from ..polling.aggregator import get_aggregated_topology
 from ..polling.scheduler import CACHE_ALERTS
 from ..models.alert import Alert, AlertStatus, AlertSeverity, AlertSummary
@@ -88,6 +89,21 @@ async def _get_librenms_alerts() -> list[Alert]:
 @router.get("/alerts", response_model=list[AlertSummary])
 async def list_alerts(status: AlertStatus | None = None):
     """List all active alerts from device status and LibreNMS."""
+    if settings.demo_mode:
+        from ..demo_data import get_demo_alerts
+        demo_alerts = get_demo_alerts()
+        return [
+            AlertSummary(
+                id=a["id"],
+                device_id=a["device_id"],
+                severity=AlertSeverity(a["severity"]) if a["severity"] in ["critical", "warning", "info", "recovery"] else AlertSeverity.WARNING,
+                message=a["message"],
+                timestamp=datetime.fromisoformat(a["timestamp"]),
+                status=AlertStatus(a["status"]) if a["status"] in ["active", "acknowledged", "resolved"] else AlertStatus.ACTIVE,
+            )
+            for a in demo_alerts
+        ]
+
     # Combine both alert sources
     device_alerts = await _get_device_down_alerts()
     librenms_alerts = await _get_librenms_alerts()

@@ -53,6 +53,7 @@ function App() {
   const setLoading = useNocStore((state) => state.setLoading)
   const setError = useNocStore((state) => state.setError)
   const setSpeedtestStatus = useNocStore((state) => state.setSpeedtestStatus)
+  const setDemoMode = useNocStore((state) => state.setDemoMode)
 
   // Connect to WebSocket for real-time updates
   useWebSocket()
@@ -76,6 +77,22 @@ function App() {
     const interval = setInterval(loadTopology, 60000)
     return () => clearInterval(interval)
   }, [setTopology, setLoading, setError])
+
+  // Fetch app config (to detect demo mode) and initial speedtest status
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const response = await fetch('/api/config')
+        const data = await response.json()
+        if (data.demo_mode) {
+          setDemoMode(true)
+        }
+      } catch {
+        // Ignore - config fetch is optional
+      }
+    }
+    loadConfig()
+  }, [setDemoMode])
 
   // Fetch initial speedtest status for external link coloring
   useEffect(() => {
