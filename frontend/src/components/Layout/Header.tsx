@@ -6,7 +6,6 @@ export default function Header() {
   const topology = useNocStore((state) => state.topology)
   const sidebarOpen = useNocStore((state) => state.sidebarOpen)
   const setSidebarOpen = useNocStore((state) => state.setSidebarOpen)
-  const demoMode = useNocStore((state) => state.demoMode)
   const alerts = useAlertStore((state) => state.alerts)
 
   const activeAlerts = alerts.filter((a) => a.status === 'active')
@@ -19,16 +18,9 @@ export default function Header() {
         <div className="text-accent-cyan text-2xl font-bold tracking-tight">
           <span className="text-text-primary">WATCH</span>TOWER
         </div>
-
-        {/* Demo mode banner */}
-        {demoMode && (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-accent-purple/20 border border-accent-purple/40 rounded text-xs text-accent-purple">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            DEMO MODE
-          </div>
-        )}
+        <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded font-medium">
+          DEMO
+        </span>
 
         {/* GitHub link */}
         <a

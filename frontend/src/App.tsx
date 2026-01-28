@@ -5,7 +5,7 @@ import ToastContainer from './components/Alerts/ToastContainer'
 import CriticalOverlay from './components/Alerts/CriticalOverlay'
 import { useNocStore } from './store/nocStore'
 import { useWebSocket } from './hooks/useWebSocket'
-import { fetchTopology } from './api/endpoints'
+import { fetchTopology, fetchSpeedtest } from './api/endpoints'
 
 // Debug helper - expose store methods to window for testing
 // Usage in browser console:
@@ -55,15 +55,24 @@ function App() {
   const setSpeedtestStatus = useNocStore((state) => state.setSpeedtestStatus)
   const setDemoMode = useNocStore((state) => state.setDemoMode)
 
-  // Connect to WebSocket for real-time updates
+  // Connect to WebSocket (no-op in demo mode)
   useWebSocket()
 
   useEffect(() => {
-    async function loadTopology() {
+    // Static demo mode: always enabled
+    setDemoMode(true)
+
+    async function loadData() {
       setLoading(true)
       try {
         const topology = await fetchTopology()
         setTopology(topology)
+
+        // Load speedtest status for external link coloring
+        const speedtest = await fetchSpeedtest()
+        if (speedtest.indicator) {
+          setSpeedtestStatus(speedtest.indicator)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load topology')
       } finally {
@@ -71,44 +80,8 @@ function App() {
       }
     }
 
-    loadTopology()
-
-    // Refresh topology every 60 seconds
-    const interval = setInterval(loadTopology, 60000)
-    return () => clearInterval(interval)
-  }, [setTopology, setLoading, setError])
-
-  // Fetch app config (to detect demo mode) and initial speedtest status
-  useEffect(() => {
-    async function loadConfig() {
-      try {
-        const response = await fetch('/api/config')
-        const data = await response.json()
-        if (data.demo_mode) {
-          setDemoMode(true)
-        }
-      } catch {
-        // Ignore - config fetch is optional
-      }
-    }
-    loadConfig()
-  }, [setDemoMode])
-
-  // Fetch initial speedtest status for external link coloring
-  useEffect(() => {
-    async function loadSpeedtest() {
-      try {
-        const response = await fetch('/api/speedtest')
-        const data = await response.json()
-        if (data.indicator) {
-          setSpeedtestStatus(data.indicator)
-        }
-      } catch {
-        // Ignore - speedtest data is optional
-      }
-    }
-    loadSpeedtest()
-  }, [setSpeedtestStatus])
+    loadData()
+  }, [setTopology, setLoading, setError, setSpeedtestStatus, setDemoMode])
 
   return (
     <ReactFlowProvider>
