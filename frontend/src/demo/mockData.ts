@@ -420,14 +420,112 @@ export const mockAlerts: AlertSummary[] = [
   },
 ]
 
+// Full speedtest result matching SpeedtestResult interface
 export const mockSpeedtest = {
+  timestamp: new Date().toISOString(),
   download_mbps: 487.5,
   upload_mbps: 462.3,
   ping_ms: 11.2,
-  server: 'Atlanta, GA',
-  timestamp: new Date().toISOString(),
+  jitter_ms: 2.4,
+  packet_loss_pct: 0.0,
+  server_id: 18531,
+  server_name: 'Comcast',
+  server_location: 'Atlanta, GA',
+  result_url: 'https://www.speedtest.net/result/14523847291',
+  status: 'completed',
   indicator: 'normal' as const,
 }
+
+// Port group aggregation stats
+export interface PortGroupStats {
+  name: string
+  description: string
+  port_count: number
+  active_port_count: number
+  in_bps: number
+  out_bps: number
+  in_mbps: number
+  out_mbps: number
+  total_mbps: number
+  status: 'ok' | 'warning' | 'critical'
+  thresholds: {
+    warning_mbps: number
+    critical_mbps: number
+  }
+}
+
+// Calculate aggregated traffic from switch interfaces
+function calculatePortGroupStats(
+  name: string,
+  description: string,
+  interfaces: Interface[],
+  portPattern: RegExp,
+  warningMbps: number,
+  criticalMbps: number
+): PortGroupStats {
+  const matchingPorts = interfaces.filter(i => portPattern.test(i.name))
+  const activePorts = matchingPorts.filter(i => i.status === 'up' && i.in_bps > 0)
+
+  const inBps = activePorts.reduce((sum, p) => sum + p.in_bps, 0)
+  const outBps = activePorts.reduce((sum, p) => sum + p.out_bps, 0)
+  const inMbps = inBps / 1_000_000
+  const outMbps = outBps / 1_000_000
+  const totalMbps = inMbps + outMbps
+
+  let status: 'ok' | 'warning' | 'critical' = 'ok'
+  if (totalMbps >= criticalMbps) status = 'critical'
+  else if (totalMbps >= warningMbps) status = 'warning'
+
+  return {
+    name,
+    description,
+    port_count: matchingPorts.length,
+    active_port_count: activePorts.length,
+    in_bps: inBps,
+    out_bps: outBps,
+    in_mbps: Math.round(inMbps * 10) / 10,
+    out_mbps: Math.round(outMbps * 10) / 10,
+    total_mbps: Math.round(totalMbps * 10) / 10,
+    status,
+    thresholds: {
+      warning_mbps: warningMbps,
+      critical_mbps: criticalMbps,
+    },
+  }
+}
+
+// Combine both switch stacks for aggregate calculations
+const allSwitchInterfaces = [...coreSw1Interfaces, ...coreSw2Interfaces]
+
+export const mockPortGroups: PortGroupStats[] = [
+  // Server uplinks (10G ports connected to hypervisors and servers)
+  calculatePortGroupStats(
+    'Server Uplinks',
+    'Aggregated 10G uplinks to hypervisors and server infrastructure',
+    allSwitchInterfaces,
+    /^Te[1-4]\/0\/(45|46|47|48)$/, // 10G uplink ports
+    15000, // 15 Gbps warning
+    35000  // 35 Gbps critical
+  ),
+  // User access ports (1G ports on slots 1-2)
+  calculatePortGroupStats(
+    'User Access',
+    'End-user workstation and VoIP phone connections',
+    allSwitchInterfaces,
+    /^Gi[1-2]\/0\/[0-9]+$/, // Slots 1-2 GigE ports
+    8000,  // 8 Gbps warning
+    15000  // 15 Gbps critical
+  ),
+  // IoT and building systems (1G ports on slots 3-4)
+  calculatePortGroupStats(
+    'IoT & Building',
+    'Access points, cameras, badge readers, and building automation',
+    allSwitchInterfaces,
+    /^Gi[3-4]\/0\/[0-9]+$/, // Slots 3-4 GigE ports
+    5000,  // 5 Gbps warning
+    10000  // 10 Gbps critical
+  ),
+]
 
 export const mockVMs: VMListResponse = {
   vms: [
@@ -443,6 +541,161 @@ export const mockVMs: VMListResponse = {
     total_lxc: 1,
     total_cpus: 20,
     total_memory_gb: 42,
+  },
+}
+
+// Pre-generated Mermaid diagram for the mock topology
+export const mockMermaidDiagram = `flowchart TB
+    subgraph core["Core Network"]
+        core-sw-1{{"Core Switch Stack 1<br/><small>10.10.1.1</small>"}}
+        core-sw-2{{"Core Switch Stack 2<br/><small>10.10.1.2</small>"}}
+    end
+
+    subgraph firewalls["Firewalls"]
+        fw-edge-1[/"Edge Firewall<br/><small>10.10.1.10</small>"\\]
+    end
+
+    subgraph servers["Servers"]
+        srv-web-1["Web Server<br/><small>10.10.2.1</small>"]
+        srv-db-1["Database Server<br/><small>10.10.2.2</small>"]
+        srv-app-1["App Server<br/><small>10.10.2.3</small>"]
+    end
+
+    subgraph hypervisors["Hypervisors"]
+        hv-prod-1["Proxmox Node 1<br/><small>10.10.3.1</small>"]
+        hv-prod-2["Proxmox Node 2<br/><small>10.10.3.2</small>"]
+    end
+
+    internet(("Internet<br/>☁️"))
+
+    core-sw-1 <-->|"10G Stack"| core-sw-2
+    core-sw-1 <-->|"10G Uplink"| fw-edge-1
+    fw-edge-1 -.->|"1G WAN<br/>Cogent"| internet
+    core-sw-1 -->|"1G"| srv-web-1
+    core-sw-2 -->|"1G"| srv-db-1
+    core-sw-2 -->|"1G"| srv-app-1
+    core-sw-1 <-->|"10G Trunk"| hv-prod-1
+    core-sw-2 <-->|"10G Trunk"| hv-prod-2
+
+    classDef down fill:#dc2626,stroke:#991b1b,color:#fff
+    classDef switch fill:#3b82f6,stroke:#1d4ed8,color:#fff
+    classDef firewall fill:#f97316,stroke:#c2410c,color:#fff
+    classDef server fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    classDef external fill:#6b7280,stroke:#374151,color:#fff
+
+    class core-sw-1,core-sw-2 switch
+    class fw-edge-1 firewall
+    class srv-web-1,srv-app-1,hv-prod-1,hv-prod-2 server
+    class srv-db-1 down
+    class internet external
+`
+
+// Proxmox node detail data for the panel view
+export interface ProxmoxNodeDetail {
+  node: {
+    node: string
+    status: string
+    cpu: number
+    memory: number
+    maxcpu: number
+    maxmem: number
+    uptime: number
+  } | null
+  vms: Array<{
+    vmid: number
+    name: string
+    type: string
+    status: string
+    cpu: number
+    memory: number
+  }>
+  lxcs: Array<{
+    vmid: number
+    name: string
+    type: string
+    status: string
+    cpu: number
+    memory: number
+  }>
+  storage: Array<{
+    storage: string
+    type: string
+    used: number
+    total: number
+    used_percent: number
+  }>
+  vms_running: number
+  vms_total: number
+  lxcs_running: number
+  lxcs_total: number
+}
+
+export const mockProxmoxNodes: Record<string, ProxmoxNodeDetail> = {
+  'hv-prod-1': {
+    node: {
+      node: 'hv-prod-1',
+      status: 'online',
+      cpu: 58.2,
+      memory: 72.4,
+      maxcpu: 32,
+      maxmem: 137438953472, // 128GB
+      uptime: 7776000,
+    },
+    vms: [
+      { vmid: 100, name: 'web-prod', type: 'qemu', status: 'running', cpu: 12.5, memory: 45.2 },
+      { vmid: 101, name: 'db-mysql', type: 'qemu', status: 'running', cpu: 35.8, memory: 72.1 },
+      { vmid: 105, name: 'mail-server', type: 'qemu', status: 'running', cpu: 8.2, memory: 28.5 },
+      { vmid: 106, name: 'backup-primary', type: 'qemu', status: 'running', cpu: 2.1, memory: 15.3 },
+      { vmid: 110, name: 'dev-staging', type: 'qemu', status: 'stopped', cpu: 0, memory: 0 },
+    ],
+    lxcs: [
+      { vmid: 200, name: 'dns-primary', type: 'lxc', status: 'running', cpu: 1.2, memory: 8.5 },
+      { vmid: 201, name: 'nginx-proxy', type: 'lxc', status: 'running', cpu: 5.8, memory: 22.1 },
+      { vmid: 202, name: 'redis-cache', type: 'lxc', status: 'running', cpu: 3.4, memory: 35.6 },
+    ],
+    storage: [
+      { storage: 'local', type: 'dir', used: 42949672960, total: 107374182400, used_percent: 40.0 },
+      { storage: 'local-lvm', type: 'lvmthin', used: 536870912000, total: 1099511627776, used_percent: 48.8 },
+      { storage: 'ceph-pool', type: 'rbd', used: 2199023255552, total: 4398046511104, used_percent: 50.0 },
+      { storage: 'nfs-backup', type: 'nfs', used: 8796093022208, total: 10995116277760, used_percent: 80.0 },
+    ],
+    vms_running: 4,
+    vms_total: 5,
+    lxcs_running: 3,
+    lxcs_total: 3,
+  },
+  'hv-prod-2': {
+    node: {
+      node: 'hv-prod-2',
+      status: 'online',
+      cpu: 42.8,
+      memory: 65.2,
+      maxcpu: 32,
+      maxmem: 137438953472, // 128GB
+      uptime: 7776000,
+    },
+    vms: [
+      { vmid: 102, name: 'app-api', type: 'qemu', status: 'running', cpu: 8.3, memory: 38.5 },
+      { vmid: 104, name: 'dev-test', type: 'qemu', status: 'stopped', cpu: 0, memory: 0 },
+      { vmid: 107, name: 'gitlab-runner', type: 'qemu', status: 'running', cpu: 22.4, memory: 45.8 },
+      { vmid: 108, name: 'jenkins', type: 'qemu', status: 'running', cpu: 15.2, memory: 52.3 },
+    ],
+    lxcs: [
+      { vmid: 103, name: 'monitoring', type: 'lxc', status: 'running', cpu: 15.2, memory: 52.0 },
+      { vmid: 203, name: 'dns-secondary', type: 'lxc', status: 'running', cpu: 0.8, memory: 6.2 },
+      { vmid: 204, name: 'log-collector', type: 'lxc', status: 'running', cpu: 4.5, memory: 28.4 },
+      { vmid: 205, name: 'metrics-db', type: 'lxc', status: 'running', cpu: 12.8, memory: 42.1 },
+    ],
+    storage: [
+      { storage: 'local', type: 'dir', used: 32212254720, total: 107374182400, used_percent: 30.0 },
+      { storage: 'local-lvm', type: 'lvmthin', used: 483183820800, total: 1099511627776, used_percent: 43.9 },
+      { storage: 'ceph-pool', type: 'rbd', used: 1759218604442, total: 4398046511104, used_percent: 40.0 },
+      { storage: 'nfs-backup', type: 'nfs', used: 8796093022208, total: 10995116277760, used_percent: 80.0 },
+    ],
+    vms_running: 3,
+    vms_total: 4,
+    lxcs_running: 4,
+    lxcs_total: 4,
   },
 }
 

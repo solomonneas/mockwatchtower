@@ -9,6 +9,10 @@ import {
   mockSpeedtest,
   mockVMs,
   mockL3Topology,
+  mockPortGroups,
+  mockProxmoxNodes,
+  type PortGroupStats,
+  type ProxmoxNodeDetail,
 } from '../demo/mockData'
 import type { Topology, TopologySummary } from '../types/topology'
 import type { Device, DeviceSummary } from '../types/device'
@@ -121,4 +125,28 @@ export async function fetchVMs(): Promise<VMListResponse> {
 // Speedtest
 export async function fetchSpeedtest(): Promise<typeof mockSpeedtest> {
   return mockSpeedtest
+}
+
+// Port Groups
+export async function fetchPortGroups(): Promise<PortGroupStats[]> {
+  return mockPortGroups
+}
+
+// Proxmox Node Detail
+export async function fetchProxmoxNode(nodeName: string): Promise<ProxmoxNodeDetail> {
+  const data = mockProxmoxNodes[nodeName]
+  if (!data) {
+    // Return empty data for unknown nodes
+    return {
+      node: null,
+      vms: [],
+      lxcs: [],
+      storage: [],
+      vms_running: 0,
+      vms_total: 0,
+      lxcs_running: 0,
+      lxcs_total: 0,
+    }
+  }
+  return data
 }

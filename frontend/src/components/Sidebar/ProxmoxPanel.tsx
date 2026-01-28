@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { fetchProxmoxNode } from '../../api/endpoints'
 
 interface NodeInfo {
   node: string
@@ -65,16 +66,12 @@ export default function ProxmoxPanel({ nodeName }: ProxmoxPanelProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
         setLoading(true)
         setError(null)
-        const response = await fetch(`/api/vms/node/${encodeURIComponent(nodeName)}`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch node data')
-        }
-        const json = await response.json()
-        setData(json)
+        const nodeData = await fetchProxmoxNode(nodeName)
+        setData(nodeData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
@@ -82,9 +79,9 @@ export default function ProxmoxPanel({ nodeName }: ProxmoxPanelProps) {
       }
     }
 
-    fetchData()
+    loadData()
     // Refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000)
+    const interval = setInterval(loadData, 30000)
     return () => clearInterval(interval)
   }, [nodeName])
 

@@ -1,21 +1,6 @@
 import { useEffect, useState } from 'react'
-
-interface PortGroupStats {
-  name: string
-  description: string
-  port_count: number
-  active_port_count: number
-  in_bps: number
-  out_bps: number
-  in_mbps: number
-  out_mbps: number
-  total_mbps: number
-  status: 'ok' | 'warning' | 'critical'
-  thresholds: {
-    warning_mbps: number
-    critical_mbps: number
-  }
-}
+import { fetchPortGroups } from '../../api/endpoints'
+import type { PortGroupStats } from '../../demo/mockData'
 
 type WidgetState = 'loading' | 'no_data' | 'ready' | 'error'
 
@@ -26,12 +11,9 @@ export default function PortGroupWidget() {
   const [expanded, setExpanded] = useState(true)
 
   // Fetch port group stats
-  const fetchStats = async () => {
+  const loadStats = async () => {
     try {
-      const response = await fetch('/api/port-groups')
-      if (!response.ok) throw new Error('Failed to fetch')
-
-      const data = await response.json()
+      const data = await fetchPortGroups()
 
       if (!data || data.length === 0) {
         setState('no_data')
@@ -48,8 +30,8 @@ export default function PortGroupWidget() {
 
   // Fetch on mount and every 60 seconds (matches interface polling)
   useEffect(() => {
-    fetchStats()
-    const interval = setInterval(fetchStats, 60000)
+    loadStats()
+    const interval = setInterval(loadStats, 60000)
     return () => clearInterval(interval)
   }, [])
 
@@ -97,7 +79,7 @@ export default function PortGroupWidget() {
         </div>
         <p className="text-sm text-status-red text-center py-2">Failed to load data</p>
         <button
-          onClick={fetchStats}
+          onClick={loadStats}
           className="w-full py-2 text-sm bg-bg-tertiary hover:bg-bg-secondary text-text-primary rounded-lg transition-colors"
         >
           Retry

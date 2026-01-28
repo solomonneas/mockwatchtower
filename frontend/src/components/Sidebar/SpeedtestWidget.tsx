@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { fetchSpeedtest } from '../../api/endpoints'
 
 interface SpeedtestResult {
   timestamp: string
@@ -26,15 +27,14 @@ export default function SpeedtestWidget() {
 
   // Fetch latest result on mount
   useEffect(() => {
-    const fetchResult = async () => {
+    const loadResult = async () => {
       try {
-        const response = await fetch('/api/speedtest')
-        const data = await response.json()
+        const data = await fetchSpeedtest()
 
         if (data.status === 'no_data') {
           setState('no_data')
         } else {
-          setResult(data)
+          setResult(data as SpeedtestResult)
           setState('ready')
         }
       } catch (err) {
@@ -43,7 +43,7 @@ export default function SpeedtestWidget() {
       }
     }
 
-    fetchResult()
+    loadResult()
   }, [])
 
   // Listen for WebSocket speedtest updates via custom event
