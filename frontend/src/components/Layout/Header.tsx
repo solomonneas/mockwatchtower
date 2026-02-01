@@ -12,22 +12,22 @@ export default function Header() {
   const criticalCount = activeAlerts.filter((a) => a.severity === 'critical').length
 
   return (
-    <header className="h-14 px-4 flex items-center justify-between border-b border-border-default bg-bg-secondary">
+    <header className="h-14 px-2 md:px-4 flex items-center justify-between border-b border-border-default bg-bg-secondary">
       {/* Logo and title */}
-      <div className="flex items-center gap-3">
-        <div className="text-accent-cyan text-2xl font-bold tracking-tight">
+      <div className="flex items-center gap-2 md:gap-3">
+        <div className="text-accent-cyan text-xl md:text-2xl font-bold tracking-tight">
           <span className="text-text-primary">WATCH</span>TOWER
         </div>
         <span className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded font-medium">
           DEMO
         </span>
 
-        {/* GitHub link */}
+        {/* GitHub link - hidden on mobile */}
         <a
           href="https://github.com/solomonneas/watchtower"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
+          className="hidden md:flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
         >
           <svg
             viewBox="0 0 16 16"
@@ -40,15 +40,15 @@ export default function Header() {
           solomonneas
         </a>
 
-        {/* Connection status */}
-        <div className="flex items-center gap-2 ml-4 text-sm text-text-secondary">
+        {/* Connection status - hidden on mobile */}
+        <div className="hidden md:flex items-center gap-2 ml-4 text-sm text-text-secondary">
           <StatusDot status="up" />
           <span>Connected</span>
         </div>
       </div>
 
       {/* Stats and controls */}
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-2 md:gap-6">
         {/* Quick stats */}
         {topology && (
           <div className="flex items-center gap-4 text-sm">

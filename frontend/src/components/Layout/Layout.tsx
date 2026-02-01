@@ -7,6 +7,7 @@ export default function Layout() {
   const isLoading = useNocStore((state) => state.isLoading)
   const error = useNocStore((state) => state.error)
   const sidebarOpen = useNocStore((state) => state.sidebarOpen)
+  const setSidebarOpen = useNocStore((state) => state.setSidebarOpen)
 
   if (error) {
     return (
@@ -43,9 +44,17 @@ export default function Layout() {
           )}
         </main>
 
+        {/* Sidebar overlay for mobile */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
         {sidebarOpen && (
-          <aside className="w-80 border-l border-border-default bg-bg-secondary flex-shrink-0 overflow-hidden">
+          <aside className="fixed inset-y-0 right-0 z-50 w-80 md:relative md:inset-y-auto md:z-auto border-l border-border-default bg-bg-secondary flex-shrink-0 overflow-hidden">
             <Sidebar />
           </aside>
         )}

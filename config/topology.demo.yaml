@@ -1,0 +1,697 @@
+# Watchtower Demo Topology - College Campus Network
+# ~50 devices across 3 buildings with realistic hierarchy:
+#   Edge -> Core -> Distribution -> Access
+#
+# Network Design:
+#   - Dual firewalls (active/standby) at the edge
+#   - Redundant core layer (L3 switching, inter-VLAN routing)
+#   - Per-building distribution (aggregation, policy enforcement)
+#   - Per-IDF/floor access switches (end-user ports, PoE for APs/phones)
+#   - 6-node Proxmox cluster + 2 Ceph storage nodes
+#   - Redundant wireless controllers
+
+clusters:
+  # Edge/DMZ
+  - id: edge-firewalls
+    name: Edge Security
+    type: firewall
+    icon: shield
+    position: { x: 400, y: 50 }
+    devices: [fw-primary, fw-secondary]
+
+  # Core Layer
+  - id: core-switches
+    name: Core Layer
+    type: switch
+    icon: switch
+    position: { x: 400, y: 200 }
+    devices: [sw-core-1, sw-core-2]
+
+  # Data Center
+  - id: datacenter
+    name: Data Center
+    type: server
+    icon: server
+    position: { x: 200, y: 350 }
+    devices: [pve-01, pve-02, pve-03, pve-04, pve-05, pve-06, storage-01, storage-02]
+
+  # Distribution Layer - Building A (Admin)
+  - id: dist-building-a
+    name: Bldg A - Distribution
+    type: switch
+    icon: switch
+    position: { x: 600, y: 350 }
+    devices: [sw-dist-a1, sw-dist-a2]
+
+  # Distribution Layer - Building B (Classrooms)
+  - id: dist-building-b
+    name: Bldg B - Distribution
+    type: switch
+    icon: switch
+    position: { x: 800, y: 350 }
+    devices: [sw-dist-b1, sw-dist-b2]
+
+  # Distribution Layer - Building C (STEM/Labs)
+  - id: dist-building-c
+    name: Bldg C - STEM Labs
+    type: switch
+    icon: switch
+    position: { x: 1000, y: 350 }
+    devices: [sw-dist-c1, sw-dist-c2]
+
+  # Access Layer - Building A
+  - id: access-building-a
+    name: Bldg A - Access
+    type: switch
+    icon: switch
+    position: { x: 550, y: 500 }
+    devices: [sw-a-01, sw-a-02, sw-a-03, sw-a-04, sw-a-05, sw-a-06]
+
+  # Access Layer - Building B (Classrooms)
+  - id: access-building-b
+    name: Bldg B - Classrooms
+    type: switch
+    icon: switch
+    position: { x: 750, y: 500 }
+    devices: [sw-b-01, sw-b-02, sw-b-03, sw-b-04, sw-b-05, sw-b-06, sw-b-07, sw-b-08]
+
+  # Access Layer - Building C (STEM)
+  - id: access-building-c
+    name: Bldg C - Labs
+    type: switch
+    icon: switch
+    position: { x: 950, y: 500 }
+    devices: [sw-c-01, sw-c-02, sw-c-03, sw-c-04, sw-c-05, sw-c-06, sw-c-07, sw-c-08, sw-c-09, sw-c-10]
+
+  # Wireless Controllers
+  - id: wireless
+    name: Wireless Infrastructure
+    type: wireless
+    icon: wifi
+    position: { x: 400, y: 650 }
+    devices: [wlc-01, wlc-02]
+
+devices:
+  # ── Firewalls ──────────────────────────────────
+  fw-primary:
+    display_name: PA-3410 Primary
+    model: Palo Alto PA-3410
+    ip: 10.0.1.1
+    location: Data Center Rack A1
+    role: primary
+
+  fw-secondary:
+    display_name: PA-3410 Secondary
+    model: Palo Alto PA-3410
+    ip: 10.0.1.2
+    location: Data Center Rack A2
+    role: secondary
+
+  # ── Core Switches ──────────────────────────────
+  sw-core-1:
+    display_name: Core-1 (C9300)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.0.10.1
+    location: Data Center Rack B1
+    port_count: 48
+
+  sw-core-2:
+    display_name: Core-2 (C9300)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.0.10.2
+    location: Data Center Rack B2
+    port_count: 48
+
+  # ── Proxmox Cluster (6 nodes) ─────────────────
+  pve-01:
+    display_name: PVE-01 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.11
+    location: Data Center Rack C1
+
+  pve-02:
+    display_name: PVE-02 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.12
+    location: Data Center Rack C1
+
+  pve-03:
+    display_name: PVE-03 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.13
+    location: Data Center Rack C2
+
+  pve-04:
+    display_name: PVE-04 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.14
+    location: Data Center Rack C2
+
+  pve-05:
+    display_name: PVE-05 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.15
+    location: Data Center Rack C3
+
+  pve-06:
+    display_name: PVE-06 (Lenovo SR630)
+    model: Lenovo SR630
+    ip: 10.0.20.16
+    location: Data Center Rack C3
+
+  # ── Storage ────────────────────────────────────
+  storage-01:
+    display_name: Ceph-01 (R740)
+    model: Dell PowerEdge R740
+    ip: 10.0.20.21
+    location: Data Center Rack D1
+
+  storage-02:
+    display_name: Ceph-02 (R740)
+    model: Dell PowerEdge R740
+    ip: 10.0.20.22
+    location: Data Center Rack D2
+
+  # ── Building A Distribution ────────────────────
+  sw-dist-a1:
+    display_name: BldgA-Dist-1
+    model: Cisco Catalyst 3850-24P
+    ip: 10.1.10.1
+    location: Building A MDF
+    port_count: 24
+
+  sw-dist-a2:
+    display_name: BldgA-Dist-2
+    model: Cisco Catalyst 3850-24P
+    ip: 10.1.10.2
+    location: Building A MDF
+    port_count: 24
+
+  # ── Building B Distribution ────────────────────
+  sw-dist-b1:
+    display_name: BldgB-Dist-1
+    model: Cisco Catalyst 3850-48P
+    ip: 10.2.10.1
+    location: Building B MDF
+    port_count: 48
+
+  sw-dist-b2:
+    display_name: BldgB-Dist-2
+    model: Cisco Catalyst 3850-48P
+    ip: 10.2.10.2
+    location: Building B MDF
+    port_count: 48
+
+  # ── Building C Distribution (STEM) ─────────────
+  sw-dist-c1:
+    display_name: BldgC-Dist-1
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.10.1
+    location: Building C MDF
+    port_count: 48
+
+  sw-dist-c2:
+    display_name: BldgC-Dist-2
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.10.2
+    location: Building C MDF
+    port_count: 48
+
+  # ── Building A Access (6 switches) ─────────────
+  sw-a-01:
+    display_name: BldgA-01 (IDF1)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.1.20.1
+    location: Building A IDF-1
+    port_count: 48
+
+  sw-a-02:
+    display_name: BldgA-02 (IDF1)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.1.20.2
+    location: Building A IDF-1
+    port_count: 48
+
+  sw-a-03:
+    display_name: BldgA-03 (IDF2)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.1.20.3
+    location: Building A IDF-2
+    port_count: 48
+
+  sw-a-04:
+    display_name: BldgA-04 (IDF2)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.1.20.4
+    location: Building A IDF-2
+    port_count: 48
+
+  sw-a-05:
+    display_name: BldgA-05 (IDF3)
+    model: Cisco Catalyst 2960X-24
+    ip: 10.1.20.5
+    location: Building A IDF-3
+    port_count: 24
+
+  sw-a-06:
+    display_name: BldgA-06 (IDF3)
+    model: Cisco Catalyst 2960X-24
+    ip: 10.1.20.6
+    location: Building A IDF-3
+    port_count: 24
+
+  # ── Building B Access (8 switches, classrooms) ─
+  sw-b-01:
+    display_name: BldgB-01 (Rm 101-110)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.1
+    location: Building B 1st Floor
+    port_count: 48
+
+  sw-b-02:
+    display_name: BldgB-02 (Rm 111-120)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.2
+    location: Building B 1st Floor
+    port_count: 48
+
+  sw-b-03:
+    display_name: BldgB-03 (Rm 121-130)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.3
+    location: Building B 1st Floor
+    port_count: 48
+
+  sw-b-04:
+    display_name: BldgB-04 (Rm 131-140)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.4
+    location: Building B 2nd Floor
+    port_count: 48
+
+  sw-b-05:
+    display_name: BldgB-05 (Rm 141-150)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.5
+    location: Building B 2nd Floor
+    port_count: 48
+
+  sw-b-06:
+    display_name: BldgB-06 (Rm 151-160)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.6
+    location: Building B 2nd Floor
+    port_count: 48
+
+  sw-b-07:
+    display_name: BldgB-07 (Rm 161-170)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.7
+    location: Building B 3rd Floor
+    port_count: 48
+
+  sw-b-08:
+    display_name: BldgB-08 (Rm 171-180)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.2.20.8
+    location: Building B 3rd Floor
+    port_count: 48
+
+  # ── Building C Access (10 switches, labs) ──────
+  sw-c-01:
+    display_name: BldgC-01 (NetLab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.1
+    location: Building C NETLAB+
+    port_count: 48
+
+  sw-c-02:
+    display_name: BldgC-02 (NetLab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.2
+    location: Building C NETLAB+
+    port_count: 48
+
+  sw-c-03:
+    display_name: BldgC-03 (Cyber Lab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.3
+    location: Building C Cyber Lab
+    port_count: 48
+
+  sw-c-04:
+    display_name: BldgC-04 (Server Lab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.4
+    location: Building C Server Lab
+    port_count: 48
+
+  sw-c-05:
+    display_name: BldgC-05 (Linux Lab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.5
+    location: Building C Linux Lab
+    port_count: 48
+
+  sw-c-06:
+    display_name: BldgC-06 (Win Lab)
+    model: Cisco Catalyst 9300-48P
+    ip: 10.3.20.6
+    location: Building C Windows Lab
+    port_count: 48
+
+  sw-c-07:
+    display_name: BldgC-07 (Gen Lab 1)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.3.20.7
+    location: Building C General Lab
+    port_count: 48
+
+  sw-c-08:
+    display_name: BldgC-08 (Gen Lab 2)
+    model: Cisco Catalyst 2960X-48
+    ip: 10.3.20.8
+    location: Building C General Lab
+    port_count: 48
+
+  sw-c-09:
+    display_name: BldgC-09 (Faculty)
+    model: Cisco Catalyst 2960X-24
+    ip: 10.3.20.9
+    location: Building C Faculty
+    port_count: 24
+
+  sw-c-10:
+    display_name: BldgC-10 (Staff)
+    model: Cisco Catalyst 2960X-24
+    ip: 10.3.20.10
+    location: Building C Staff
+    port_count: 24
+
+  # ── Wireless Controllers ───────────────────────
+  wlc-01:
+    display_name: WLC-01 (9800)
+    model: Cisco Catalyst 9800
+    ip: 10.0.30.1
+    location: Data Center
+
+  wlc-02:
+    display_name: WLC-02 (9800)
+    model: Cisco Catalyst 9800
+    ip: 10.0.30.2
+    location: Data Center
+
+connections:
+  # ── Core <-> Firewalls ─────────────────────────
+  - id: core1-fw1
+    source: { device: sw-core-1, port: Gi1/0/47 }
+    target: { device: fw-primary, port: eth1/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core1-fw2
+    source: { device: sw-core-1, port: Gi1/0/48 }
+    target: { device: fw-secondary, port: eth1/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-fw1
+    source: { device: sw-core-2, port: Gi1/0/47 }
+    target: { device: fw-primary, port: eth1/2 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-fw2
+    source: { device: sw-core-2, port: Gi1/0/48 }
+    target: { device: fw-secondary, port: eth1/2 }
+    type: trunk
+    speed: 10000
+
+  # ── Core <-> Core (LACP) ───────────────────────
+  - id: core-core
+    source: { device: sw-core-1, port: Port-channel1 }
+    target: { device: sw-core-2, port: Port-channel1 }
+    type: trunk
+    speed: 20000
+
+  # ── Core <-> Servers (10G) ─────────────────────
+  - id: core1-pve01
+    source: { device: sw-core-1, port: Gi1/0/1 }
+    target: { device: pve-01, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core1-pve02
+    source: { device: sw-core-1, port: Gi1/0/2 }
+    target: { device: pve-02, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core1-pve03
+    source: { device: sw-core-1, port: Gi1/0/3 }
+    target: { device: pve-03, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-pve04
+    source: { device: sw-core-2, port: Gi1/0/1 }
+    target: { device: pve-04, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-pve05
+    source: { device: sw-core-2, port: Gi1/0/2 }
+    target: { device: pve-05, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-pve06
+    source: { device: sw-core-2, port: Gi1/0/3 }
+    target: { device: pve-06, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  # ── Core <-> Storage ───────────────────────────
+  - id: core1-stor1
+    source: { device: sw-core-1, port: Gi1/0/4 }
+    target: { device: storage-01, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-stor2
+    source: { device: sw-core-2, port: Gi1/0/4 }
+    target: { device: storage-02, port: eno1 }
+    type: trunk
+    speed: 10000
+
+  # ── Core <-> WLCs ──────────────────────────────
+  - id: core1-wlc01
+    source: { device: sw-core-1, port: Gi1/0/5 }
+    target: { device: wlc-01, port: Gi0/0/0 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-wlc02
+    source: { device: sw-core-2, port: Gi1/0/5 }
+    target: { device: wlc-02, port: Gi0/0/0 }
+    type: trunk
+    speed: 10000
+
+  # ── Core <-> Distribution (10G uplinks) ────────
+  - id: core1-dista1
+    source: { device: sw-core-1, port: Gi1/0/10 }
+    target: { device: sw-dist-a1, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-dista2
+    source: { device: sw-core-2, port: Gi1/0/10 }
+    target: { device: sw-dist-a2, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core1-distb1
+    source: { device: sw-core-1, port: Gi1/0/11 }
+    target: { device: sw-dist-b1, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-distb2
+    source: { device: sw-core-2, port: Gi1/0/11 }
+    target: { device: sw-dist-b2, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core1-distc1
+    source: { device: sw-core-1, port: Gi1/0/12 }
+    target: { device: sw-dist-c1, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: core2-distc2
+    source: { device: sw-core-2, port: Gi1/0/12 }
+    target: { device: sw-dist-c2, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  # ── Distribution <-> Access: Building A ────────
+  - id: dista1-a01
+    source: { device: sw-dist-a1, port: Gi1/0/2 }
+    target: { device: sw-a-01, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: dista1-a02
+    source: { device: sw-dist-a1, port: Gi1/0/3 }
+    target: { device: sw-a-02, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: dista1-a03
+    source: { device: sw-dist-a1, port: Gi1/0/4 }
+    target: { device: sw-a-03, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: dista2-a04
+    source: { device: sw-dist-a2, port: Gi1/0/2 }
+    target: { device: sw-a-04, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: dista2-a05
+    source: { device: sw-dist-a2, port: Gi1/0/3 }
+    target: { device: sw-a-05, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: dista2-a06
+    source: { device: sw-dist-a2, port: Gi1/0/4 }
+    target: { device: sw-a-06, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  # ── Distribution <-> Access: Building B ────────
+  - id: distb1-b01
+    source: { device: sw-dist-b1, port: Gi1/0/2 }
+    target: { device: sw-b-01, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb1-b02
+    source: { device: sw-dist-b1, port: Gi1/0/3 }
+    target: { device: sw-b-02, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb1-b03
+    source: { device: sw-dist-b1, port: Gi1/0/4 }
+    target: { device: sw-b-03, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb1-b04
+    source: { device: sw-dist-b1, port: Gi1/0/5 }
+    target: { device: sw-b-04, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb2-b05
+    source: { device: sw-dist-b2, port: Gi1/0/2 }
+    target: { device: sw-b-05, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb2-b06
+    source: { device: sw-dist-b2, port: Gi1/0/3 }
+    target: { device: sw-b-06, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb2-b07
+    source: { device: sw-dist-b2, port: Gi1/0/4 }
+    target: { device: sw-b-07, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distb2-b08
+    source: { device: sw-dist-b2, port: Gi1/0/5 }
+    target: { device: sw-b-08, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  # ── Distribution <-> Access: Building C ────────
+  - id: distc1-c01
+    source: { device: sw-dist-c1, port: Gi1/0/2 }
+    target: { device: sw-c-01, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc1-c02
+    source: { device: sw-dist-c1, port: Gi1/0/3 }
+    target: { device: sw-c-02, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc1-c03
+    source: { device: sw-dist-c1, port: Gi1/0/4 }
+    target: { device: sw-c-03, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc1-c04
+    source: { device: sw-dist-c1, port: Gi1/0/5 }
+    target: { device: sw-c-04, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc1-c05
+    source: { device: sw-dist-c1, port: Gi1/0/6 }
+    target: { device: sw-c-05, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc2-c06
+    source: { device: sw-dist-c2, port: Gi1/0/2 }
+    target: { device: sw-c-06, port: Gi1/0/1 }
+    type: trunk
+    speed: 10000
+
+  - id: distc2-c07
+    source: { device: sw-dist-c2, port: Gi1/0/3 }
+    target: { device: sw-c-07, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distc2-c08
+    source: { device: sw-dist-c2, port: Gi1/0/4 }
+    target: { device: sw-c-08, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distc2-c09
+    source: { device: sw-dist-c2, port: Gi1/0/5 }
+    target: { device: sw-c-09, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+  - id: distc2-c10
+    source: { device: sw-dist-c2, port: Gi1/0/6 }
+    target: { device: sw-c-10, port: Gi1/0/1 }
+    type: trunk
+    speed: 1000
+
+external_links:
+  - id: wan-primary
+    source: { device: fw-primary, port: eth1/10 }
+    target: { label: Spectrum Enterprise, type: isp, icon: globe }
+    provider: Spectrum Enterprise
+    circuit_id: SP-ENT-12345
+    speed: 1000
+
+  - id: wan-backup
+    source: { device: fw-secondary, port: eth1/10 }
+    target: { label: Lumen Fiber, type: isp, icon: globe }
+    provider: Lumen
+    circuit_id: LUM-FBR-67890
+    speed: 500
